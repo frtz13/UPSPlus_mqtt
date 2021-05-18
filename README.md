@@ -160,7 +160,7 @@ binary_sensor:
         payload_not_available: "offline"
 ```
 
-![](C:\Users\fritz\source\repos\UPSPlus_mqtt\img\ups-ha.png)
+![](./img/ups-ha.png)
 
 ### Getting things ready
 
