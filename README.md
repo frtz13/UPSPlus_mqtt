@@ -174,6 +174,8 @@ You can stop the script with ctrl-C.
 
 If you do not get any error messages, switch off AC power for the UPS and have a look at the syslog (`journalctl -f`). In less than a minute, you should get a message that the UPS is on battery.
 
+If you configured a connection to a MQTT broker, start up a mqtt client and have it listen to the `home/rpi/#` topic.
+
 If you want to simulate a shutdown at low battery voltage, do the following in order to have to wait for a low battery situation:
 
 Be sure to have AC power for the UPS switched on. Set the following parameter in your configuration file, in the [ups] section: `SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY = 1`, and restart the script. This will instruct the script to start a shutdown sequence immediately when the UPS is on battery. Once the shutdown sequence completed and the UPS shut down power for the Raspberry Pi, you can restore AC power. The UPS should switch on, and the Raspberry Pi should start up.

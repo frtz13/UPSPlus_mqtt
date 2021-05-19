@@ -219,7 +219,7 @@ class C_UPSPlus:
         # print("avg battery current: {:.0f} mA, avg output current: {:.0f} mA".format(self.BatteryCurent_avg_mA, self.RPiCurrent_avg_mA))
         self.RPiVoltage_mini_V = upsCurrent.POutVoltage_mini_V
 
-        # get charger status
+        # get UPS register contents
         self.aReceiveBuf = []
         self.aReceiveBuf.append(0x00)  
         for i in range(1,255):
@@ -227,24 +227,21 @@ class C_UPSPlus:
         self.UsbC_mV = self.aReceiveBuf[8] << 8 | self.aReceiveBuf[7]
         self.UsbMicro_mV = self.aReceiveBuf[10] << 8 | self.aReceiveBuf[9]
         self.BatteryTemperature_degC = self.aReceiveBuf[12] << 8 | self.aReceiveBuf[11]
-        self.BatteryFullVoltage_mV = self.aReceiveBuf[14] << 8 | self.aReceiveBuf[13]
-        self.BatteryEmptyVoltage_mV = self.aReceiveBuf[16] << 8 | self.aReceiveBuf[15]
+#        self.BatteryFullVoltage_mV = self.aReceiveBuf[14] << 8 | self.aReceiveBuf[13]
+#        self.BatteryEmptyVoltage_mV = self.aReceiveBuf[16] << 8 | self.aReceiveBuf[15]
         self.BatteryProtectionVoltage_mV = self.aReceiveBuf[18] << 8 | self.aReceiveBuf[17] # not used here
         self.BatteryRemainingCapacity_percent = self.aReceiveBuf[20] << 8 | self.aReceiveBuf[19]
-        self.CurrentPowerStatus = self.aReceiveBuf[23] == 1
-        self.AccumulatedRunTime_s = self.aReceiveBuf[31] << 24 | self.aReceiveBuf[30] << 16 | self.aReceiveBuf[29] << 8 | self.aReceiveBuf[28]
-        self.AccumulatedChargingTime_s = self.aReceiveBuf[35] << 24 | self.aReceiveBuf[34] << 16 | self.aReceiveBuf[33] << 8 | self.aReceiveBuf[32]
-        self.CurrentRunTime_s = self.aReceiveBuf[39] << 24 | self.aReceiveBuf[38] << 16 | self.aReceiveBuf[37] << 8 | self.aReceiveBuf[36]
-        self.FirmwareVersion = self.aReceiveBuf[41] << 8 | self.aReceiveBuf[40]
+#        self.AccumulatedRunTime_s = self.aReceiveBuf[31] << 24 | self.aReceiveBuf[30] << 16 | self.aReceiveBuf[29] << 8 | self.aReceiveBuf[28]
+#        self.AccumulatedChargingTime_s = self.aReceiveBuf[35] << 24 | self.aReceiveBuf[34] << 16 | self.aReceiveBuf[33] << 8 | self.aReceiveBuf[32]
+#        self.CurrentRunTime_s = self.aReceiveBuf[39] << 24 | self.aReceiveBuf[38] << 16 | self.aReceiveBuf[37] << 8 | self.aReceiveBuf[36]
+#        self.FirmwareVersion = self.aReceiveBuf[41] << 8 | self.aReceiveBuf[40]
 
     @property
     def P_OnBattery(self):
-        if self.UsbC_mV > 4000:
-            return False
-        elif self.UsbMicro_mV > 4000:
-            return False
-        else:
-            return True
+        # with the current firmware (v. 7) it is more reliable to check discharging current.
+        # USB-C and micro-USB voltages are sometimes not correctly reported
+        return self.BatteryCurrent_avg_mA > 500 # positive current means battery is discharging
+        # return (self.UsbC_mV < 4000) and (self.UsbMicro_mV < 4000)
 
     @property
     def P_BatteryIsCharging(self):
@@ -346,7 +343,7 @@ class C_UpsCurrent:
         self.minRpiVoltage = 6
         return tmpMin
 
-def handleBattery(mqttclient):
+def handleUPS(mqttclient):
     global upsWasOnBattery
     upsPlus = C_UPSPlus(upsCurrent)
 #    print('Battery voltage: %.3f V' % upsPlus.BatteryVoltage_V)
@@ -435,11 +432,18 @@ def handleFan(mqttclient):
 
 
 try:
+    print("UPS Plus to MQTT  Copyright (C) 2021  https://github.com/frtz13")
+    print("This program comes with ABSOLUTELY NO WARRANTY")
+    print("This is free software, and you are welcome to redistribute it")
+    print("under conditions of the GPL (see http://www.gnu.org/licenses for details).")
+    print("")
+
     if not ReadConfig():
         print("Please check configuration file and parameters")
         syslog.syslog("Program stopped. Please check configuration file and parameters.")
         exit()
 
+    print("Type ctrl-C to exit")
     controlFan = (GPIO_FAN >= 0)
 
 #   init MQTT connection
@@ -490,7 +494,7 @@ try:
 
         except OSError as e:
             fUpsPresent = False
-            errMsg = 'UPS not found at i2c address. Error message: ' + str(e)
+            errMsg = 'No reply from UPS on i2c bus. Error message: ' + str(e)
             syslog.syslog(errMsg)
             print(errMsg)
 
@@ -523,10 +527,10 @@ try:
             if not mqttConnected and connectToMQTT:
                 mqttConnected = MQTT_Connect(mqttclient)
             if fUpsPresent:
-                handleBattery(mqttclient)
+                handleUPS(mqttclient)
         else:
             intBatteryCheckTimer = intBatteryCheckTimer + 1
-        sleep(1) # Read the CPU temperature every 5 sec
+        sleep(1)
 
 except KeyboardInterrupt: # trap a CTRL+C keyboard interrupt 
     if controlFan:
