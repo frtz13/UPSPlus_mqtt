@@ -34,11 +34,11 @@
   
   etc. for the other files.
 
-- create a folder ~/logs
+- Create a folder ~/logs
 
-- configure your options in fanShutDownUps.ini (please see below for details)
+- Configure your options in fanShutDownUps.ini (please see below for details)
 
-- once ready, install to crontab:
+- When ready, install to crontab:
   `crontab -e`
   then add the line:
   
@@ -102,7 +102,7 @@ UPS data is sent to the broker with the topic `home/rpi/ups` (depending on your 
 
 - UsbMicro_V,
 
-- OnBattery (boolean; `true` when both charging ports are at low voltage; `false` otherwise),
+- OnBattery (boolean; `true` when average discharging current is greater than 500mA; `false` otherwise),
 
 - BatteryVoltage_V (as measured by the INA219 sensor at i2c address 0x45),
 
