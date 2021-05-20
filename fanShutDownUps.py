@@ -221,9 +221,13 @@ class C_UPSPlus:
 
         # get UPS register contents
         self.aReceiveBuf = []
-        self.aReceiveBuf.append(0x00)  
-        for i in range(1,255):
-            self.aReceiveBuf.append(i2c_bus.read_byte_data(DEVICE_ADDR, i))
+        self.aReceiveBuf.append(0x00)
+        try:
+            for i in range(1,255):
+                self.aReceiveBuf.append(i2c_bus.read_byte_data(DEVICE_ADDR, i))
+        except Exception as exc:
+            raise Exception("[C_UPSPLus.init] Error reading UPS registers: " + str(exc))
+
         self.UsbC_mV = self.aReceiveBuf[8] << 8 | self.aReceiveBuf[7]
         self.UsbMicro_mV = self.aReceiveBuf[10] << 8 | self.aReceiveBuf[9]
         self.BatteryTemperature_degC = self.aReceiveBuf[12] << 8 | self.aReceiveBuf[11]
@@ -345,7 +349,13 @@ class C_UpsCurrent:
 
 def handleUPS(mqttclient):
     global upsWasOnBattery
-    upsPlus = C_UPSPlus(upsCurrent)
+    try:
+        upsPlus = C_UPSPlus(upsCurrent)
+    except Exception as exc:
+        errMsg = "[handleUPS] Error getting data from UPS: " + str(exc)
+        print(errMsg)
+        syslog.syslog(errMsg)
+        return
 #    print('Battery voltage: %.3f V' % upsPlus.BatteryVoltage_V)
     try:
         if mqttclient.connected_flag:
