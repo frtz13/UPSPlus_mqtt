@@ -8,7 +8,7 @@
 
 - Can control a fan via a GPIO pin using PWM, depending on CPU temperature.
 
-- Can send UPS status and fan status data to a MQTT broker.
+- Can publish UPS status and fan status data to a MQTT broker.
 
 - Can send UPS status data to the manufacturer's IOT platform.
 
@@ -24,7 +24,7 @@
 
 - Install python3 if it isn't already installed.
 
-- Install additional modules via: pip install _module-name_
+- Install additional modules via: pip3 install _module-name_
 
 - Copy fanShutDownUps.py, fanShutDownUps.ini, launcher.sh into a folder (we use ~/scripts in our example)
   
@@ -74,7 +74,7 @@ At startup, the script will check if it can detect the UPS at the expected addre
 
 #### MQTT broker
 
-Configuration parameters for the MQTT broker should be self-explaining. If you do not want to use this feature, configure an empty value for BROKER.
+Configuration parameters for the MQTT broker should be self-explaining. If you do not want to use this feature, set BROKER to an empty value.
 
 ## Operation
 
@@ -84,19 +84,19 @@ I decided to write a script running continuously in the background to avoid havi
 
 When the UPS Plus is on battery, a message is written every minute to the syslog, containing the current battery voltage and the critical limit.
 
-When the measured battery voltage goes under the critical value while the UPS is on battery, the shutdown is triggered: the UPS Plus Back-To-AC-auto-power-up parameter is set, the UPS Plus shutdown countdown is started, and the Raspberry Pi is told to shut down. Thus, the Raspberry Pi will restart once batteries charge again.
+When the measured battery voltage goes under the critical value while the UPS is on battery, the shutdown is triggered: the UPS Plus Back-To-AC-auto-power-up parameter is set, the UPS Plus shutdown countdown is started, and the Raspberry Pi is told to shut down. Thus, the Raspberry Pi should restart once AC power is back and the batteries charge again.
 
 At startup, the script will not check the battery voltage during the first five minutes, to avoid another immediate shutdown if AC power comes back with some instability.
 
-In addition, MQTT data will not be sent during this time to leave time for the MQTT broker to start up if it runs on the same Raspberry Pi.
+In addition, MQTT data will not be published during this time to leave time for the MQTT broker to start up if it runs on the same Raspberry Pi. That said, the script is supposed to reconnect to the MQTT broker in case the latter stops and restarts. 
 
 Therefore, in a worst case scenario where cron starts the script at boot time, if erroneous values are read from the UPS Plus, or something else is wrong with the script, you should have enough time to kill the script before it attempts to shut down your Raspberry Pi.
 
 #### MQTT
 
-Fan data is sent to the broker with the topic `home/rpi/fanspeed` (depending on your configuration). Fan PWM ratio in percent is sent every 5 seconds (by default), but only when its value changes. It is sent with the "retain" flag set.
+Fan data is published to the broker with the topic `home/rpi/fanspeed` (depending on your configuration). Fan PWM ratio in percent is sent every 5 seconds (by default), but only when its value changes. It is sent with the "retain" flag set.
 
-UPS data is sent to the broker with the topic `home/rpi/ups` (depending on your configuration). It is sent as a json string. Included values are:
+UPS data is published to the broker with the topic `home/rpi/ups`. It is sent as a json string. Included values are:
 
 - UsbC_V,
 
@@ -174,11 +174,11 @@ You can stop the script with ctrl-C.
 
 If you do not get any error messages, switch off AC power for the UPS and have a look at the syslog (`journalctl -f`). In less than a minute, you should get a message that the UPS is on battery.
 
-If you configured a connection to a MQTT broker, start up a mqtt client and have it listen to the `home/rpi/#` topic.
+If you configured a connection to an MQTT broker, start up an MQTT client and have it listen to the `home/rpi/#` topic.
 
-If you want to simulate a shutdown at low battery voltage, do the following in order to have to wait for a low battery situation:
+If you want to simulate a shutdown at low battery voltage, do the following in order to avoid to have to wait for a low battery situation:
 
-Be sure to have AC power for the UPS switched on. Set the following parameter in your configuration file, in the [ups] section: `SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY = 1`, and restart the script. This will instruct the script to start a shutdown sequence immediately when the UPS is on battery. Once the shutdown sequence completed and the UPS shut down power for the Raspberry Pi, you can restore AC power. The UPS should switch on, and the Raspberry Pi should start up.
+Be sure to have AC power for the UPS switched on. Set the following parameter in your configuration file, [ups] section: `SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY = 1`, and restart the script. This will instruct the script to start a shutdown sequence immediately when the UPS is on battery. Once the shutdown sequence completed and the UPS shut down power for the Raspberry Pi, you can restore AC power. The UPS should switch on, and the Raspberry Pi should start.
 
 Once you are done with testing, comment out the `TIMER_BIAS_AT_STARTUP` and `SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY` parameters in the configuration file, configure crontab to start the script at boot time and restart your Raspberry Pi.
 
