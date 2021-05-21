@@ -167,6 +167,7 @@ def MQTT_Publish(client, ups):
         dictPayload['BatteryVoltage_V'] = ups.BatteryVoltage_V
         dictPayload['BatteryCurrent_mA'] = int(ups.BatteryCurrent_mA)
         dictPayload['BatteryCurrent_avg_mA'] = int(ups.BatteryCurrent_avg_mA)
+        dictPayload['BatteryPower_avg_mW'] = int(ups.BatteryPower_avg_mW)
         dictPayload['BatteryCharging'] = ups.P_BatteryIsCharging
         dictPayload['BatteryRemainingCapacity_percent'] = ups.BatteryRemainingCapacity_percent
         dictPayload['BatteryTemperature_degC'] = ups.BatteryTemperature_degC
@@ -174,6 +175,7 @@ def MQTT_Publish(client, ups):
         dictPayload['OutputVoltage_mini_V'] = ups.RPiVoltage_mini_V
         dictPayload['OutputCurrent_mA'] = int(ups.RPiCurrent_mA)
         dictPayload['OutputCurrent_avg_mA'] = int(ups.RPiCurrent_avg_mA)
+        dictPayload['OutputPower_avg_mW'] = int(ups.RPiPower_avg_mW)
         dictPayload['OutputCurrent_peak_mA'] = int(ups.RPiCurrent_peak_mA)
         payload = json.dumps(dictPayload)
         try:
@@ -202,21 +204,30 @@ def MQTT_Terminate(client):
 class C_UPSPlus:
     def __init__(self, upsCurrent):
         # get battery status
-        self.BatteryVoltage_V = inaBattery.voltage()
         try:
-            self.BatteryCurrent_mA = -inaBattery.current() # positive: discharge current
-        except DeviceRangeError:
-            self.BatteryCurrent_mA = 16000
+            self.BatteryVoltage_V = inaBattery.voltage()
+            try:
+                self.BatteryCurrent_mA = -inaBattery.current() # positive: discharge current
+            except DeviceRangeError:
+                self.BatteryCurrent_mA = 16000
+        except Exception as exc:
+            raise Exception("[C_UPSPLus.init] Error reading inaBatt registers: " + str(exc))
         self.BatteryCurrent_avg_mA = upsCurrent.PbattCurrent_avg_mA
+        self.BatteryPower_avg_mW = upsCurrent.PbattPower_avg_mW
         # get output status
-        self.RPiVoltage_V = inaRPi.voltage()
         try:
-            self.RPiCurrent_mA = inaRPi.current()
-        except DeviceRangeError:
-            self.RPiCurrent_mA = 16000
+            self.RPiVoltage_V = inaRPi.voltage()
+            try:
+                self.RPiCurrent_mA = inaRPi.current()
+            except DeviceRangeError:
+                self.RPiCurrent_mA = 16000
+        except Exception as exc:
+            raise Exception("[C_UPSPLus.init] Error reading inaRPi registers: " + str(exc))
         self.RPiCurrent_avg_mA = upsCurrent.PoutCurrent_avg_mA
+        self.RPiPower_avg_mW = upsCurrent.PoutPower_avg_mW
         self.RPiCurrent_peak_mA = upsCurrent.POutCurrent_peak_mA
         # print("avg battery current: {:.0f} mA, avg output current: {:.0f} mA".format(self.BatteryCurent_avg_mA, self.RPiCurrent_avg_mA))
+        # print("avg battery power: {:.0f} mW, avg output power {:.0f} mW".format(self.BatteryPower_avg_mW, self.RPiPower_avg_mW))
         self.RPiVoltage_mini_V = upsCurrent.POutVoltage_mini_V
 
         # get UPS register contents
@@ -233,7 +244,7 @@ class C_UPSPlus:
         self.BatteryTemperature_degC = self.aReceiveBuf[12] << 8 | self.aReceiveBuf[11]
 #        self.BatteryFullVoltage_mV = self.aReceiveBuf[14] << 8 | self.aReceiveBuf[13]
 #        self.BatteryEmptyVoltage_mV = self.aReceiveBuf[16] << 8 | self.aReceiveBuf[15]
-        self.BatteryProtectionVoltage_mV = self.aReceiveBuf[18] << 8 | self.aReceiveBuf[17] # not used here
+#        self.BatteryProtectionVoltage_mV = self.aReceiveBuf[18] << 8 | self.aReceiveBuf[17] # not used here
         self.BatteryRemainingCapacity_percent = self.aReceiveBuf[20] << 8 | self.aReceiveBuf[19]
 #        self.AccumulatedRunTime_s = self.aReceiveBuf[31] << 24 | self.aReceiveBuf[30] << 16 | self.aReceiveBuf[29] << 8 | self.aReceiveBuf[28]
 #        self.AccumulatedChargingTime_s = self.aReceiveBuf[35] << 24 | self.aReceiveBuf[34] << 16 | self.aReceiveBuf[33] << 8 | self.aReceiveBuf[32]
@@ -295,34 +306,55 @@ class C_UpsCurrent:
     def __init__(self):
         self.battCurrent = deque([0 for i in range(2 * BATT_LOOP_TIME)]) # we take more samples to flatten out battery sampling of the UPS
         # directly taking the sample period does not seem to make much sense either because it does not precisely correspond to the configured number of minutes
+        self.battPower = deque([0 for i in range(BATT_LOOP_TIME)]) # we take more samples to flatten out battery sampling of the UPS
         self.outCurrent = deque([0 for i in range(BATT_LOOP_TIME)])
+        self.outPower = deque([0 for i in range(BATT_LOOP_TIME)])
         self.minRpiVoltage = 6
         self.maxOutCurrent = 0
+        self.canWarn = 0
 
     def addValue(self):
-        battCurr = 9999
+        fHadWarning = False
+        fHadException = False
         try:
             battCurr = -inaBattery.current()
-            self.battCurrent.popleft()
-            self.battCurrent.append(battCurr)
-        except DeviceRangeError:
-            pass
-        outCurr = 9999
+            battPow = inaBattery.power()
+        except Exception as exc:
+            fHadException = True
+            if self.canWarn == 0:
+                syslog.syslog("[C_UpsCurrent.addValue] Error reading inaBatt registers: " + str(exc))
+                fHadWarning = True
         try:
             outCurr = inaRPi.current()
-            self.outCurrent.popleft()
-            self.outCurrent.append(outCurr)
-            if self.maxOutCurrent < outCurr:
-                self.maxOutCurrent = outCurr
-        except DeviceRangeError:
-            pass
-        # print("battery current: {:.0f} mA, output current: {:.0f} mA".format(battCurr, outCurr))
-        try:
+            outPow = inaRPi.power()
             rpiVolt = inaRPi.voltage()
-            if rpiVolt < self.minRpiVoltage:
-                self.minRpiVoltage = rpiVolt
-        except:
-            pass
+        except Exception as exc:
+            fHadException = True
+            if self.canWarn == 0:
+                syslog.syslog("[C_UpsCurrent.addValue] Error reading inaRPi registers: " + str(exc))
+                fHadWarning = True
+        # we make sure we do not get a warning about timeout etc. every second
+        if fHadWarning:
+            self.canWarn = 60
+        else:
+            if self.canWarn > 0:
+                self.canWarn = self.canWarn - 1
+        if fHadException:
+            return
+        # put measures into arrays
+        self.battCurrent.popleft()
+        self.battCurrent.append(battCurr)
+        self.battPower.popleft()
+        self.battPower.append(battPow)
+        self.outCurrent.popleft()
+        self.outCurrent.append(outCurr)
+        if self.maxOutCurrent < outCurr:
+            self.maxOutCurrent = outCurr
+        # print("battery current: {:.0f} mA, output current: {:.0f} mA".format(battCurr, outCurr))
+        self.outPower.popleft()
+        self.outPower.append(outPow)
+        if rpiVolt < self.minRpiVoltage:
+            self.minRpiVoltage = rpiVolt
 
     @property
     def PbattCurrent_avg_mA(self):
@@ -330,9 +362,17 @@ class C_UpsCurrent:
         return sum(self.battCurrent) / len(self.battCurrent)
 
     @property
+    def PbattPower_avg_mW(self):
+        return sum(self.battPower) / len(self.battPower)
+
+    @property
     def PoutCurrent_avg_mA(self):
         # print("out current: " + str(self.outCurrent))
         return sum(self.outCurrent) / len(self.outCurrent)
+
+    @property
+    def PoutPower_avg_mW(self):
+        return sum(self.outPower) / len(self.outPower)
 
     @property
     # Getting the value will reset max value !!! 
@@ -368,7 +408,7 @@ def handleUPS(mqttclient):
     if upsPlus.P_OnBattery:
         upsWasOnBattery = True
         syslog.syslog('UPS on battery. Battery voltage: {:.3f} V. Shutdown at {:.3f} V'.format(upsPlus.BatteryVoltage_V, (protectionVoltage_mV + PROTECTION_VOLTAGE_MARGIN_mV) / 1000))
-        if upsPlus.BatteryVoltage_V > 1: # protect against bad battery volage reading
+        if upsPlus.BatteryVoltage_V > 1: # protect against bad battery voltage reading
             if (upsPlus.BatteryVoltage_V * 1000) < protectionVoltage_mV + PROTECTION_VOLTAGE_MARGIN_mV :
                 syslog.syslog('UPS battery voltage below threshold of %.3f V. Shutting down.' % ((protectionVoltage_mV + PROTECTION_VOLTAGE_MARGIN_mV) / 1000))
                 Shutdown(mqttclient)
@@ -422,7 +462,11 @@ def writefanspeed(fanSpeed, mqttclient):
 
 def handleFan(mqttclient):
     global fanSpeed,fansum
-    actualTemp = float(getCPUtemperature())
+    try:
+        actualTemp = float(getCPUtemperature())
+    except Exception as exc:
+        print("getCpuTemperature exception: " + str(exc))
+        return
     diff=actualTemp-DESIRED_CPU_TEMP
     fansum=fansum+diff
     pDiff=diff*pTemp
@@ -484,7 +528,7 @@ try:
         i2c_bus = smbus2.SMBus(DEVICE_BUS)
     except Exception as e:
         fUpsPresent = False
-        errMsg = 'i2c bus for communication with UPS could not be intialized. Error message: ' + str(e)
+        errMsg = 'i2c bus for communication with UPS could not be initialized. Error message: ' + str(e)
         syslog.syslog(errMsg)
         print(errMsg)
 
@@ -493,7 +537,7 @@ try:
         try:
             protectVHi = i2c_bus.read_byte_data(DEVICE_ADDR, 0x12)
             protectionVoltage_mV = protectVHi << 8 | i2c_bus.read_byte_data(DEVICE_ADDR, 0x11)
-            if protectionVoltage_mV >= 3000 and protectionVoltage_mV <= 4000:
+            if protectionVoltage_mV >= 2500 and protectionVoltage_mV <= 4000:
                 pass
             else:
                 protectionV_default_mV = 3700

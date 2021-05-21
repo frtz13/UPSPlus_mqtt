@@ -1,2 +1,8 @@
 v20210518 - frtz13
 	initial version
+
+v20210521 - frtz13
+	- added averaged BatteryPower and OutputPower
+	- added exception handling when reading i2c bus
+	- lower bound for checking Battery Protection Voltage set to 2500 mV
+	- fixed some typos

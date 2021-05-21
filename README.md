@@ -110,6 +110,8 @@ UPS data is published to the broker with the topic `home/rpi/ups`. It is sent as
 
 - BatteryCurrent_avg_mA (averaged over a time interval twice as long as BATTERY_CHECK_LOOP_TIME_s),
 
+- BatteryPower_avg_mW (averaged over a time interval of BATTERY_CHECK_LOOP_TIME_s)
+
 - BatteryCharging (boolean, `true` if BatteryCurrent_avg_mA is negative)
 
 - BatteryRemainingCapacity_percent,
@@ -123,6 +125,8 @@ UPS data is published to the broker with the topic `home/rpi/ups`. It is sent as
 - OutputCurrent_mA,
 
 - OutputCurrent_avg_mA (averaged over a time interval of BATTERY_CHECK_LOOP_TIME_s),
+
+- OutputPower_avg_mW (averaged over a time interval of BATTERY_CHECK_LOOP_TIME_s)
 
 - OutputCurrent_peak_mA (peak value during the preceding time interval of BATTERY_CHECK_LOOP_TIME_s)
 
