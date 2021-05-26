@@ -108,9 +108,9 @@ UPS data is published to the broker with the topic `home/rpi/ups`. It is sent as
 
 - BatteryCurrent_mA (positive value: discharging, negative value: charging)
 
-- BatteryCurrent_avg_mA (averaged over a time interval twice as long as BATTERY_CHECK_LOOP_TIME_s),
+- BatteryCurrent_avg_mA,
 
-- BatteryPower_avg_mW (averaged over a time interval of BATTERY_CHECK_LOOP_TIME_s)
+- BatteryPower_avg_mW,
 
 - BatteryCharging (boolean, `true` if BatteryCurrent_avg_mA is negative)
 
@@ -124,11 +124,13 @@ UPS data is published to the broker with the topic `home/rpi/ups`. It is sent as
 
 - OutputCurrent_mA,
 
-- OutputCurrent_avg_mA (averaged over a time interval of BATTERY_CHECK_LOOP_TIME_s),
+- OutputCurrent_avg_mA,
 
-- OutputPower_avg_mW (averaged over a time interval of BATTERY_CHECK_LOOP_TIME_s)
+- OutputPower_avg_mW,
 
 - OutputCurrent_peak_mA (peak value during the preceding time interval of BATTERY_CHECK_LOOP_TIME_s)
+
+Measurements are averaged over a time interval twice as long as BATTERY_CHECK_LOOP_TIME_s.
 
 ##### Using the MQTT data
 
@@ -168,7 +170,7 @@ binary_sensor:
 
 ### Getting things ready
 
-For a first try, you may want to set the following parameter in your configuration file, [ups] section: `TIMER_BIAS_AT_STARTUP = 0`. This will instruct  the script to start the UPS probing immediately, without waiting for five minutes.
+For a first try, you may want to start the script with the `--notimerbias` command line parameter. Alternatively, you can set the following parameter in your configuration file, [ups] section: `TIMER_BIAS_AT_STARTUP = 0`. This will instruct  the script to start the UPS probing immediately, without waiting for five minutes.
 
 Start the script: `python3 fanShutDownUps.py`
 

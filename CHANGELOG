@@ -6,3 +6,11 @@ v20210521 - frtz13
 	- added exception handling when reading i2c bus
 	- lower bound for checking Battery Protection Voltage set to 2500 mV
 	- fixed some typos
+
+v20210526 - frtz13
+	- battery power with polarity
+	- new command line parameter: --notimerbias
+	- uniform averaging period set to twice the battery check loop time
+	- battery protection voltage now read every minute.
+	- new script: setProtectionVoltage.py
+	- new sensors definition file for Home Assistant
