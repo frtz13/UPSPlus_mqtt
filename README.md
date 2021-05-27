@@ -82,7 +82,7 @@ I decided to write a script running continuously in the background to avoid havi
 
 #### Automatic shutdown
 
-When the UPS Plus is on battery, a message is written every minute to the syslog, containing the current battery voltage and the critical limit.
+When the UPS Plus is on battery, a message is written every minute to the syslog, containing the current battery voltage and the critical limit. "On battery" status is assumed when the average battery discharge current is greater than 500mA. Because of the use of the average current, status changes will be recognized with some delay.
 
 When the measured battery voltage goes under the critical value while the UPS is on battery, the shutdown is triggered: the UPS Plus Back-To-AC-auto-power-up parameter is set, the UPS Plus shutdown countdown is started, and the Raspberry Pi is told to shut down. Thus, the Raspberry Pi should restart once AC power is back and the batteries charge again.
 
@@ -165,6 +165,8 @@ binary_sensor:
         payload_available: "online"
         payload_not_available: "offline"
 ```
+
+You'll find more sensor definitions in the `HA_config_ups_fan.yaml` file.
 
 ![](./img/ups-ha.png)
 
