@@ -57,7 +57,7 @@ sensor:
     device_class: temperature
     state_topic: "home/rpi/ups"
     value_template: '{{ value_json["BatteryTemperature_degC"] }}'
-    unit_of_measurement: "°C"
+    unit_of_measurement: "Â°C"
     availability:
       - topic:  "home/rpi/LWT"
         payload_available: "online"
