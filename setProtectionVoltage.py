@@ -15,7 +15,7 @@ print("-"*60)
 print("Modify battery protection voltage in UPS Plus")
 print("-"*60)
 
-PV_Mini_mV = 2500
+PV_Mini_mV = 3000
 PV_Maxi_mV = 4000
 
 # Raspberry Pi Communicates with MCU via i2c protocol.
