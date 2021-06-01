@@ -14,3 +14,6 @@ v20210526 - frtz13
 	- battery protection voltage now read every minute.
 	- new script: setProtectionVoltage.py
 	- new sensors definition file for Home Assistant
+
+v20210601 - frtz13
+	- exception handling in shutdown sequence

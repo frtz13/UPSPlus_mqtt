@@ -473,10 +473,16 @@ def Shutdown(mqttclient):
     if controlFan:
        fanOFF(mqttclient)
     MQTT_Terminate(mqttclient)
-    # initialized shutdown sequence.
-    i2c_bus.write_byte_data(DEVICE_ADDR, 24, SHUTDOWN_TIMEOUT)
-	# enable switch on when back on AC 
-    i2c_bus.write_byte_data(DEVICE_ADDR, 25, 1)
+    # initialize shutdown sequence.
+    try:
+    	# enable switch on when back on AC 
+        i2c_bus.write_byte_data(DEVICE_ADDR, 0x19, 1)
+    except Exception as exc:
+        syslog.syslog("[Shutdown] Error writing UPS register (back to AC power up): " + str(exc))
+    try:
+        i2c_bus.write_byte_data(DEVICE_ADDR, 0x18, SHUTDOWN_TIMEOUT)
+    except Exception as exc:
+        syslog.syslog("[Shutdown] Error writing UPS register (shutdown timeout): " + str(exc))
     time.sleep(1)
 #    os.system("sudo shutdown -h 1")
     os.system("sudo sync && sudo halt")
@@ -612,6 +618,7 @@ try:
     if fUpsPresent:
         upsCurrent = C_UpsCurrent()
 
+    syslog.syslog("Running...")
     upsWasOnBattery = False
      # set negative value (-300 + BATT_LOOP_TIME) to force long waiting at startup if power fails again
      # also, script won't shut down the RPi before elapse of this time, so we have a chance to kill the script should anything malfunction
@@ -643,4 +650,5 @@ except KeyboardInterrupt: # trap a CTRL+C keyboard interrupt
         GPIO.cleanup() # resets all GPIO ports used by this program
     MQTT_Terminate(mqttclient)
     print("")
+    syslog.syslog("Stopped")
 
