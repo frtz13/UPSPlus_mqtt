@@ -58,7 +58,7 @@ Configuration parameters:
 
 **FAN_LOOP_TIME_s**: recommended value: 5. Interval for fan speed calculation.
 
-**DESIRED_CPU_TEMP_degC**: the fan control will start to work at this temperature and try to maintain this CPU temperature.
+**DESIRED_CPU_TEMP_degC**: the fan control will start to work at this temperature and try to maintain this CPU temperature. This parameter is re-read at runtime with the `BATTERY_CHECK_LOOP_TIME_s` interval.
 
 #### UPS
 

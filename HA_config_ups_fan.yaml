@@ -1,3 +1,5 @@
+# example file for Home Assistant sensor definitions
+# copy / paste sensor defintions of interest to your own configuration.yaml file
 sensor:
   - platform: mqtt
     name: CPU fan speed

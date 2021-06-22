@@ -37,6 +37,8 @@ import requests
 import random
 from collections import deque
 
+SCRIPT_VERSION = "20210622"
+
 CONFIG_FILE = "fanShutDownUps.ini"
 CONFIGSECTION_FAN = "fan"
 CONFIGSECTION_MQTT = "mqtt"
@@ -55,10 +57,16 @@ MQTT_TOPIC_LWT = "/LWT"
 MQTT_PAYLOAD_ONLINE = "online"
 MQTT_PAYLOAD_OFFLINE = "offline"
 
+def ReadConfig_DesiredCpuTemp():
+    global DESIRED_CPU_TEMP
+    confparser = configparser.RawConfigParser()
+    confparser.read(os.path.join(sys.path[0], CONFIG_FILE))
+    DESIRED_CPU_TEMP = int(confparser.get(CONFIGSECTION_FAN, "DESIRED_CPU_TEMP_degC"))
+
+
 def ReadConfig():
     global GPIO_FAN # The GPIO pin ID to control the fan
     global FAN_LOOP_TIME
-    global DESIRED_CPU_TEMP
     global FANSPEED_FILENAME
     global SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM
     global BATT_LOOP_TIME
@@ -78,8 +86,7 @@ def ReadConfig():
 
         GPIO_FAN = int(confparser.get(CONFIGSECTION_FAN, "GPIO_FAN"))
         FAN_LOOP_TIME = int(confparser.get(CONFIGSECTION_FAN, "FAN_LOOP_TIME_s"))
-        DESIRED_CPU_TEMP = int(confparser.get(CONFIGSECTION_FAN, "DESIRED_CPU_TEMP_degC"))
-
+        ReadConfig_DesiredCpuTemp()
         SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM = 1 == int(confparser.get(CONFIGSECTION_UPS, "SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM"))
         BATT_LOOP_TIME = int(confparser.get(CONFIGSECTION_UPS, "BATTERY_CHECK_LOOP_TIME_s"))
         if CMD_NoTimerBias in sys.argv:
@@ -167,8 +174,10 @@ def MQTT_Connect(client):
 def MQTT_Publish(client, ups):
 #   make payload
         dictPayload = {}
-        dictPayload['UsbC_V'] = '{:.3f}'.format(ups.UsbC_mV / 1000)
-        dictPayload['UsbMicro_V'] = '{:.3f}'.format(ups.UsbMicro_mV / 1000)
+#        dictPayload['UsbC_V'] = '{:.3f}'.format(ups.UsbC_mV / 1000)
+#        dictPayload['UsbMicro_V'] = '{:.3f}'.format(ups.UsbMicro_mV / 1000)
+        dictPayload['UsbC_V'] = ups.UsbC_mV / 1000
+        dictPayload['UsbMicro_V'] = ups.UsbMicro_mV / 1000
         dictPayload['OnBattery'] = ups.P_OnBattery
         dictPayload['BatteryVoltage_V'] = ups.BatteryVoltage_V
         dictPayload['BatteryCurrent_mA'] = int(ups.BatteryCurrent_mA)
@@ -433,6 +442,73 @@ class C_UpsCurrent:
         self.minRpiVoltage = 6
         return tmpMin
 
+class C_Fan:
+    def __init__(self, mqttclient):
+        self.currentfanspeed = 999
+        self.fanSpeed = 100
+        self.fansum = 0
+        self.pTemp = 15
+        self.iTemp = 0.4
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(GPIO_FAN, GPIO.OUT)
+        self.myPWM = GPIO.PWM(GPIO_FAN, 50)
+        self.myPWM.start(50)
+        GPIO.setwarnings(False)
+        self.mqttclient = mqttclient
+        self.fanOFF()
+
+    def handleFan(self):
+        try:
+            actualTemp = float(self.getCPUtemperature())
+        except Exception as exc:
+            print("getCpuTemperature exception: " + str(exc))
+            return
+        diff = actualTemp - DESIRED_CPU_TEMP
+        self.fansum = self.fansum + diff
+        pDiff = diff * self.pTemp
+        iDiff = self.fansum * self.iTemp
+        self.fanSpeed = pDiff + iDiff
+        if self.fanSpeed > 100:
+            self.fanSpeed = 100
+        if self.fanSpeed < 15:
+            self.fanSpeed=0
+        if self.fansum > 100:
+            self.fansum = 100
+        if self.fansum < -100:
+            self.fansum = -100
+    #    print("actualTemp %4.2f TempDiff %4.2f pDiff %4.2f iDiff %4.2f fanSpeed %5d" % (actualTemp,diff,pDiff,iDiff,self.fanSpeed))
+        self.myPWM.ChangeDutyCycle(self.fanSpeed)
+        self.writefanspeed()
+
+    def getCPUtemperature(self):
+        res = os.popen('vcgencmd measure_temp').readline()
+        temp =(res.replace("temp=","").replace("'C\n",""))
+        # print("temp is {0}".format(temp)) #Uncomment here for testing
+        return temp
+
+    def fanOFF(self):
+        self.myPWM.ChangeDutyCycle(0)   # switch fan off
+        self.fanSpeed = 0
+        self.currentfanspeed = 0
+        self.writefanspeed()
+        return()
+
+    def writefanspeed(self):
+        if self.mqttclient.connected_flag and (self.fanSpeed != self.currentfanspeed):
+            try:
+                res = self.mqttclient.publish(MQTT_TOPIC + MQTT_TOPIC_FAN, str(int(self.fanSpeed)), 0, True)
+                if res[0] == 0:
+                    self.currentfanspeed = self.fanSpeed
+            except Exception as e:
+                pass
+        return()
+
+    def cleanup(self):
+        self.fanOFF()
+        GPIO.cleanup() # resets all GPIO ports used by this program
+
+
 def handleUPS(mqttclient):
     global upsWasOnBattery
     try:
@@ -489,56 +565,53 @@ def Shutdown(mqttclient):
     while True:
         time.sleep(100)    
 
+def UpsPresent():
+# checks if i2c bus usable, UPS replies on i2c bus
+# initialises i2c bus and both INA sensors
+# returns False if we get an exception at any of these operations
+    global i2c_bus
+    global inaRPi
+    global inaBattery
 
-def getCPUtemperature():
-    res = os.popen('vcgencmd measure_temp').readline()
-    temp =(res.replace("temp=","").replace("'C\n",""))
-    # print("temp is {0}".format(temp)) #Uncomment here for testing
-    return temp
-
-def fanOFF(mqttclient):
-    myPWM.ChangeDutyCycle(0)   # switch fan off
-    writefanspeed(0, mqttclient)
-    return()
-
-def writefanspeed(fanSpeed, mqttclient):
-    global currentfanspeed
-    if mqttclient.connected_flag and (fanSpeed != currentfanspeed):
-        try:
-            res = mqttclient.publish(MQTT_TOPIC + MQTT_TOPIC_FAN, str(int(fanSpeed)), 0, True)
-            if res[0] == 0:
-                currentfanspeed = fanSpeed
-        except Exception as e:
-            pass
-    return()
-
-def handleFan(mqttclient):
-    global fanSpeed,fansum
+    #   init i2c protocol
+    fUpsPresent = True
     try:
-        actualTemp = float(getCPUtemperature())
+        i2c_bus = smbus2.SMBus(DEVICE_BUS)
+    except Exception as e:
+        errMsg = 'i2c bus for communication with UPS could not be initialized. Error message: ' + str(e)
+        syslog.syslog(errMsg)
+        print(errMsg)
+        return False
+    # check UPS replies on i2c bus
+    try:
+        void = i2c_bus.read_byte_data(DEVICE_ADDR, 0x12)
+    except OSError as e:
+        errMsg = 'No reply from UPS on i2c bus. Error message: ' + str(e)
+        syslog.syslog(errMsg)
+        print(errMsg)
+        return False
+    # Raspberry Pi output current and voltage
+    try:
+        inaRPi = INA219(0.00725, address=0x40)
+        inaRPi.configure()
     except Exception as exc:
-        print("getCpuTemperature exception: " + str(exc))
-        return
-    diff=actualTemp-DESIRED_CPU_TEMP
-    fansum=fansum+diff
-    pDiff=diff*pTemp
-    iDiff=fansum*iTemp
-    fanSpeed=pDiff +iDiff
-    if fanSpeed>100:
-        fanSpeed=100
-    if fanSpeed<15:
-        fanSpeed=0
-    if fansum>100:
-        fansum=100
-    if fansum<-100:
-        fansum=-100
-#    print("actualTemp %4.2f TempDiff %4.2f pDiff %4.2f iDiff %4.2f fanSpeed %5d" % (actualTemp,diff,pDiff,iDiff,fanSpeed))
-    myPWM.ChangeDutyCycle(fanSpeed)
-    writefanspeed(fanSpeed, mqttclient)
-
+        errMsg = 'Cannot initialize communication with INA219 (output). Error message: ' + str(exc)
+        syslog.syslog(errMsg)
+        print(errMsg)
+        return False
+    # Battery current and voltage
+    try:
+        inaBattery = INA219(0.005, address=0x45)
+        inaBattery.configure()
+    except Exception as exc:
+        errMsg = 'Cannot initialize communication with INA219 (battery). Error message: ' + str(exc)
+        syslog.syslog(errMsg)
+        print(errMsg)
+        return False
+    return True
 
 try:
-    print("UPS Plus to MQTT  Copyright (C) 2021  https://github.com/frtz13")
+    print("UPS-Plus to MQTT version {} Copyright (C) 2021  https://github.com/frtz13".format(SCRIPT_VERSION))
     print("This program comes with ABSOLUTELY NO WARRANTY")
     print("This is free software, and you are welcome to redistribute it")
     print("under conditions of the GPL (see http://www.gnu.org/licenses for details).")
@@ -550,80 +623,31 @@ try:
         exit()
 
     print("Type ctrl-C to exit")
-    controlFan = (GPIO_FAN >= 0)
+    syslog.syslog("Version {} running...".format(SCRIPT_VERSION))
 
 #   init MQTT connection
     connectToMQTT = not (MQTT_BROKER == "")
     mqtt.Client.connected_flag = False # create flags in class
     mqtt.Client.connection_rc = -1
-    mqttclient = mqtt.Client("UPSPlus")
+    mqttclient = mqtt.Client("fanShutDownUps")
     mqttConnected = False
 
-#   prepare fan settings
+    controlFan = (GPIO_FAN >= 0)
     if controlFan:
-        currentfanspeed = 999
-        fanSpeed=100
-        fansum=0
-        pTemp=15
-        iTemp=0.4
-        GPIO.setwarnings(False)
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(GPIO_FAN, GPIO.OUT)
-        myPWM=GPIO.PWM(GPIO_FAN,50)
-        myPWM.start(50)
-        GPIO.setwarnings(False)
-        fanOFF(mqttclient)
-
-#   init i2c protocol
-    fUpsPresent = True
-    try:
-        i2c_bus = smbus2.SMBus(DEVICE_BUS)
-    except Exception as e:
-        fUpsPresent = False
-        errMsg = 'i2c bus for communication with UPS could not be initialized. Error message: ' + str(e)
-        syslog.syslog(errMsg)
-        print(errMsg)
-
-#   check UPS present
-    if fUpsPresent:
-        try:
-            void = i2c_bus.read_byte_data(DEVICE_ADDR, 0x12)
-        except OSError as e:
-            fUpsPresent = False
-            errMsg = 'No reply from UPS on i2c bus. Error message: ' + str(e)
-            syslog.syslog(errMsg)
-            print(errMsg)
-
-    if fUpsPresent:
-        try:
-    #   Raspberry Pi output current and voltage
-            inaRPi = INA219(0.00725, address=0x40)
-            inaRPi.configure()
-        except Exception as exc:
-            fUpsPresent = False
-            errMsg = 'Cannot initialize communication with INA219 (output). Error message: ' + str(exc)
-            syslog.syslog(errMsg)
-            print(errMsg)
-    if fUpsPresent:
-    #   Battery current and voltage
-        try:
-            inaBattery = INA219(0.005, address=0x45)
-            inaBattery.configure()
-        except Exception as exc:
-            fUpsPresent = False
-            errMsg = 'Cannot initialize communication with INA219 (battery). Error message: ' + str(exc)
-            syslog.syslog(errMsg)
-            print(errMsg)
-     
+        oFan = C_Fan(mqttclient)
+    
+    fUpsPresent = UpsPresent()
     if fUpsPresent:
         upsCurrent = C_UpsCurrent()
 
-    syslog.syslog("Running...")
     upsWasOnBattery = False
-     # set negative value (-300 + BATT_LOOP_TIME) to force long waiting at startup if power fails again
-     # also, script won't shut down the RPi before elapse of this time, so we have a chance to kill the script should anything malfunction
-     # also allows to wait for the MQTT broker to start if running on the RPi
+
+     # set negative value (-300 + BATT_LOOP_TIME) to force long waiting at startup.
+     # so the RPi will be running for some minimum time if power fails again.
+     # also, script won't shut down the RPi before elapse of this time, so we have a chance to kill the script should anything malfunction.
+     # also allows to wait for the MQTT broker to start if it is running on the RPi, too.
     intBatteryCheckTimer = TIMER_BIAS_AT_STARTUP
+    
     intFanTimer = 0
     while True:
         if fUpsPresent:
@@ -631,11 +655,14 @@ try:
         if controlFan:
             if intFanTimer >= FAN_LOOP_TIME:
                 intFanTimer =  0
-                handleFan(mqttclient)
+                oFan.handleFan()
+#                 handleFan(mqttclient)
             else:
                 intFanTimer =  intFanTimer + 1
         if intBatteryCheckTimer >= BATT_LOOP_TIME:
             intBatteryCheckTimer = 0
+            if controlFan:
+                ReadConfig_DesiredCpuTemp()
             if not mqttConnected and connectToMQTT:
                 mqttConnected = MQTT_Connect(mqttclient)
             if fUpsPresent:
@@ -646,8 +673,7 @@ try:
 
 except KeyboardInterrupt: # trap a CTRL+C keyboard interrupt 
     if controlFan:
-        fanOFF(mqttclient)
-        GPIO.cleanup() # resets all GPIO ports used by this program
+        oFan.cleanup()
     MQTT_Terminate(mqttclient)
     print("")
     syslog.syslog("Stopped")

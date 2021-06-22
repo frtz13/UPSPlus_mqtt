@@ -17,3 +17,7 @@ v20210526 - frtz13
 
 v20210601 - frtz13
 	- exception handling in shutdown sequence
+
+v20210622 - frtz13
+	- some refactoring in code
+	- re-read DESIRED_CPU_TEMP_degC every minute
