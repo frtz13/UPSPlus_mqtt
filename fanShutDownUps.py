@@ -37,7 +37,7 @@ import requests
 import random
 from collections import deque
 
-SCRIPT_VERSION = "20210622"
+SCRIPT_VERSION = "20210622a"
 
 CONFIG_FILE = "fanShutDownUps.ini"
 CONFIGSECTION_FAN = "fan"
@@ -300,7 +300,7 @@ class C_UPSPlus:
         return self.BatteryCurrent_avg_mA < 0
 
     def sendUpsStatusData(self):
-        FEED_URL = "https://api.thekoziolfoundation.com/feed"
+        FEED_URL = "https://api.52pi.com/feed"
         # time.sleep(random.randint(0, 3))
 
         DATA = dict()
