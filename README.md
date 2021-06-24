@@ -66,6 +66,8 @@ At startup, the script will check if it can detect the UPS at the expected addre
 
 **SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM**: setting this to 1 will do the same job as the upsplus_iot.py script in https://github.com/geeekpi/upsplus. Set to 0 to avoid sending the data.
 
+**UPSPLUS_IOT_PLATFORM_URL**: lets you specify the feed URL. If you don't, https://api.52pi.com/feed will be used.
+
 **BATTERY_CHECK_LOOP_TIME_s**: recommended value: 60. Interval for battery check and transmission of the UPS status to the MQTT broker.
 
 **SHUTDOWN_TIMEOUT_s**: recommended value: 30 or 60, depending on how much time your Raspberry Pi needs to safely shut down. 
@@ -172,7 +174,7 @@ You'll find more sensor definitions in the `HA_config_ups_fan.yaml` file.
 
 ### Getting things ready
 
-For a first try, you may want to start the script with the `--notimerbias` command line parameter. Alternatively, you can set the following parameter in your configuration file, [ups] section: `TIMER_BIAS_AT_STARTUP = 0`. This will instruct  the script to start the UPS probing immediately, without waiting for five minutes.
+For a first try, you may want to start the script with the `--notimerbias` command line argument. Alternatively, you can set the following parameter in your configuration file, [ups] section: `TIMER_BIAS_AT_STARTUP = 0`. This will instruct  the script to start the UPS probing immediately, without waiting for five minutes.
 
 Start the script: `python3 fanShutDownUps.py`
 
@@ -186,7 +188,7 @@ If you configured a connection to an MQTT broker, start up an MQTT client and ha
 
 If you want to simulate a shutdown at low battery voltage, do the following in order to avoid to have to wait for a low battery situation:
 
-Be sure to have AC power for the UPS switched on. Set the following parameter in your configuration file, [ups] section: `SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY = 1`, and restart the script. This will instruct the script to start a shutdown sequence immediately when the UPS is on battery. Once the shutdown sequence completed and the UPS shut down power for the Raspberry Pi, you can restore AC power. The UPS should switch on, and the Raspberry Pi should start.
+Be sure to have AC power for the UPS switched on. Start the script with the `--shutdowntest` argument (or set the following parameter in your configuration file, [ups] section: `SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY = 1`), and restart the script. This will instruct the script to start a shutdown sequence immediately when the UPS is on battery. Once the shutdown sequence completed and the UPS shut down power for the Raspberry Pi, you can restore AC power. The UPS should switch on, and the Raspberry Pi should start.
 
 Once you are done with testing, comment out the `TIMER_BIAS_AT_STARTUP` and `SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY` parameters in the configuration file, configure crontab to start the script at boot time and restart your Raspberry Pi.
 
