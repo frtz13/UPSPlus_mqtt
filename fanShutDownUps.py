@@ -37,7 +37,7 @@ import requests
 import random
 from collections import deque
 
-SCRIPT_VERSION = "20210622a"
+SCRIPT_VERSION = "20210624"
 
 CONFIG_FILE = "fanShutDownUps.ini"
 CONFIGSECTION_FAN = "fan"
@@ -45,6 +45,7 @@ CONFIGSECTION_MQTT = "mqtt"
 CONFIGSECTION_UPS = "ups"
 
 CMD_NoTimerBias = "--notimerbias"
+CMD_ShutdownImmediatelyWhenOnBattery = "--shutdowntest"
 
 DEVICE_BUS = 1 # Define I2C bus
 DEVICE_ADDR = 0x17 # Define device i2c slave address.
@@ -69,6 +70,7 @@ def ReadConfig():
     global FAN_LOOP_TIME
     global FANSPEED_FILENAME
     global SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM
+    global UPSPLUS_IOT_PLATFORM_URL
     global BATT_LOOP_TIME
     global TIMER_BIAS_AT_STARTUP
     global SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY # for testing shutdown only
@@ -87,7 +89,13 @@ def ReadConfig():
         GPIO_FAN = int(confparser.get(CONFIGSECTION_FAN, "GPIO_FAN"))
         FAN_LOOP_TIME = int(confparser.get(CONFIGSECTION_FAN, "FAN_LOOP_TIME_s"))
         ReadConfig_DesiredCpuTemp()
+
         SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM = 1 == int(confparser.get(CONFIGSECTION_UPS, "SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM"))
+        try:
+            UPSPLUS_IOT_PLATFORM_URL = confparser.get(CONFIGSECTION_UPS, "UPSPLUS_IOT_PLATFORM_URL")
+        except:
+            UPSPLUS_IOT_PLATFORM_URL = "https://api.52pi.com/feed"
+
         BATT_LOOP_TIME = int(confparser.get(CONFIGSECTION_UPS, "BATTERY_CHECK_LOOP_TIME_s"))
         if CMD_NoTimerBias in sys.argv:
             TIMER_BIAS_AT_STARTUP = 0
@@ -97,11 +105,18 @@ def ReadConfig():
                 TIMER_BIAS_AT_STARTUP = -int(confparser.get(CONFIGSECTION_UPS, "TIMER_BIAS_AT_STARTUP"))
             except:
                 TIMER_BIAS_AT_STARTUP = -300 + BATT_LOOP_TIME
-        try:
-            SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY = (1 == int(confparser.get(CONFIGSECTION_UPS, "SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY")))
-        except:
-            SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY = False
+
+        if CMD_ShutdownImmediatelyWhenOnBattery in sys.argv:
+            SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY = True
+        else:
+            try:
+                SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY = (1 == int(confparser.get(CONFIGSECTION_UPS, "SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY")))
+            except:
+                SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY = False
+        if SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY:
+            print("Will immediately shut down when UPS is on battery.")
         SHUTDOWN_TIMEOUT = int(confparser.get(CONFIGSECTION_UPS, "SHUTDOWN_TIMEOUT_s"))
+
         parm = "PROTECTION_VOLTAGE_MARGIN_mV"
         PROTECTION_VOLTAGE_MARGIN_mV = int(confparser.get(CONFIGSECTION_UPS, parm))
         protVmargin_mini_mV = 100
@@ -112,6 +127,7 @@ def ReadConfig():
         if PROTECTION_VOLTAGE_MARGIN_mV > protVmargin_maxi_mV:
             print("{} set to {:.0f} mV".format(parm, protVmargin_maxi_mV))
             PROTECTION_VOLTAGE_MARGIN_mV = protVmargin_maxi_mV
+
         MQTT_BROKER = confparser.get(CONFIGSECTION_MQTT, "BROKER")
         MQTT_PORT = int(confparser.get(CONFIGSECTION_MQTT, "TCP_PORT"))
         MQTT_USERNAME = confparser.get(CONFIGSECTION_MQTT, "USERNAME")
@@ -119,8 +135,9 @@ def ReadConfig():
         MQTT_TOPIC = confparser.get(CONFIGSECTION_MQTT, "TOPIC")
         return True
     except Exception as e:
-        print("Error when reading configuration parameters: " + str(e))
-        syslog.syslog("Error when reading configuration parameters: " + str(e))
+        errmsg = "Error when reading configuration parameters: " + str(e)
+        print(errmsg)
+        syslog.syslog(errmsg)
         return False
 
 def on_mqttconnect(client, userdata, flags, rc):
@@ -140,7 +157,9 @@ def on_mqttconnect(client, userdata, flags, rc):
             4: "Connection refused – bad username or password",
             5: "connection not autorized"
             }
-#        print("Bad connection. " + errMsg.get(rc, "Unknown error: " + str(rc)) + ".")
+        errMsgFull = "Connection to MQTT broker failed. " + errMsg.get(rc, "Unknown error: {}.".format(str(rc)))
+        print(errMsgFull)
+        syslog.syslog(errMsgFull)
 
 def on_mqttdisconnect(client, userdata, rc):
 #    print("disconnecting reason  "  + str(rc))
@@ -192,6 +211,8 @@ def MQTT_Publish(client, ups):
         dictPayload['OutputCurrent_avg_mA'] = int(ups.RPiCurrent_avg_mA)
         dictPayload['OutputPower_avg_mW'] = int(ups.RPiPower_avg_mW)
         dictPayload['OutputCurrent_peak_mA'] = int(ups.RPiCurrent_peak_mA)
+        if SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM:
+            dictPayload['UPSPlus_IOT_Platform_Reply'] = ups.sendStatusDataReply
         payload = json.dumps(dictPayload)
         try:
             res = client.publish(MQTT_TOPIC + MQTT_TOPIC_UPS, payload, 0, False)
@@ -218,6 +239,7 @@ def MQTT_Terminate(client):
 
 class C_UPSPlus:
     def __init__(self, upsCurrent):
+        self.sendStatusDataReply = ""
         # get battery status
         try:
             self.BatteryVoltage_V = inaBattery.voltage()
@@ -300,7 +322,7 @@ class C_UPSPlus:
         return self.BatteryCurrent_avg_mA < 0
 
     def sendUpsStatusData(self):
-        FEED_URL = "https://api.52pi.com/feed"
+        global sendStatusData_warncount
         # time.sleep(random.randint(0, 3))
 
         DATA = dict()
@@ -333,11 +355,20 @@ class C_UPSPlus:
 
 #        print(DATA)
         try:
-            r = requests.post(FEED_URL, data=DATA)
-#            print(r.text)
+            r = requests.post(UPSPLUS_IOT_PLATFORM_URL, data=DATA)
+            # print(r.text)
+            self.sendStatusDataReply = r.text.replace("\"", "'")
+            sendStatusData_warncount = 0
         except Exception as e:
-#            print("sending UPS status data failed: " + str(e))
-            pass
+            # print("sending UPS status data failed: " + str(e))
+            warncount = 10
+            self.sendStatusDataReply = "sending UPS status data failed: " + str(e)
+            if sendStatusData_warncount == warncount:
+                errmsg = ("sending UPS status data failed {} times: " + str(e)).format(warncount)
+                syslog.syslog(errmsg)
+                print(errmsg)
+            if sendStatusData_warncount <= warncount:
+                sendStatusData_warncount = sendStatusData_warncount + 1
 
 class C_UpsCurrent:
     def __init__(self):
@@ -519,14 +550,14 @@ def handleUPS(mqttclient):
         syslog.syslog(errMsg)
         return
 #    print('Battery voltage: %.3f V' % upsPlus.BatteryVoltage_V)
+    if SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM:
+        upsPlus.sendUpsStatusData()
     try:
         if mqttclient.connected_flag:
             MQTT_Publish(mqttclient, upsPlus)
     except Exception as e:
         print("mqttpublish exception: " + str(e))
         pass
-    if SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM:
-        upsPlus.sendUpsStatusData()
     if upsPlus.P_OnBattery:
         upsWasOnBattery = True
         syslog.syslog('UPS on battery. Battery voltage: {:.3f} V. Shutdown at {:.3f} V'.format(upsPlus.BatteryVoltage_V, (upsPlus.P_ProtectionVoltage_mV + PROTECTION_VOLTAGE_MARGIN_mV) / 1000))
@@ -547,7 +578,7 @@ def handleUPS(mqttclient):
 
 def Shutdown(mqttclient):  
     if controlFan:
-       fanOFF(mqttclient)
+       oFan.fanOFF()
     MQTT_Terminate(mqttclient)
     # initialize shutdown sequence.
     try:
@@ -566,9 +597,9 @@ def Shutdown(mqttclient):
         time.sleep(100)    
 
 def UpsPresent():
-# checks if i2c bus usable, UPS replies on i2c bus
-# initialises i2c bus and both INA sensors
-# returns False if we get an exception at any of these operations
+# check if i2c bus is usable. check if we can read UPS registers.
+# initialize i2c bus and both INA sensors
+# returns False if we get an exception in any of these operations
     global i2c_bus
     global inaRPi
     global inaBattery
@@ -610,6 +641,7 @@ def UpsPresent():
         return False
     return True
 
+sendStatusData_warncount = 0
 try:
     print("UPS-Plus to MQTT version {} Copyright (C) 2021  https://github.com/frtz13".format(SCRIPT_VERSION))
     print("This program comes with ABSOLUTELY NO WARRANTY")
@@ -656,7 +688,6 @@ try:
             if intFanTimer >= FAN_LOOP_TIME:
                 intFanTimer =  0
                 oFan.handleFan()
-#                 handleFan(mqttclient)
             else:
                 intFanTimer =  intFanTimer + 1
         if intBatteryCheckTimer >= BATT_LOOP_TIME:
