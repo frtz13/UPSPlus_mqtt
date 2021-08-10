@@ -623,7 +623,7 @@ def UpsPresent():
         return False
     # Raspberry Pi output current and voltage
     try:
-        inaRPi = INA219(0.00725, address=0x40)
+        inaRPi = INA219(0.00725, busnum=DEVICE_BUS, address=0x40)
         inaRPi.configure()
     except Exception as exc:
         errMsg = 'Cannot initialize communication with INA219 (output). Error message: ' + str(exc)
@@ -632,7 +632,7 @@ def UpsPresent():
         return False
     # Battery current and voltage
     try:
-        inaBattery = INA219(0.005, address=0x45)
+        inaBattery = INA219(0.005, busnum=DEVICE_BUS, address=0x45)
         inaBattery.configure()
     except Exception as exc:
         errMsg = 'Cannot initialize communication with INA219 (battery). Error message: ' + str(exc)
