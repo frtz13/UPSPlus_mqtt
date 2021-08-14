@@ -42,7 +42,7 @@ sensor:
     name: "UPS Battery current"
     device_class: current
     state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["BatteryCurrent_mA"] | multiply(0.001) }}'
+    value_template: '{{ value_json["BatteryCurrent_mA"] | multiply(0.001) | round(3) }}'
     unit_of_measurement: "A"
     availability:
       - topic:  "home/rpi/LWT"
@@ -64,7 +64,7 @@ sensor:
     name: "UPS average Battery current"
     device_class: current
     state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["BatteryCurrent_avg_mA"] | multiply(0.001) }}'
+    value_template: '{{ value_json["BatteryCurrent_avg_mA"] | multiply(0.001) | round(3) }}'
     unit_of_measurement: "A"
     availability:
       - topic:  "home/rpi/LWT"
@@ -86,7 +86,7 @@ sensor:
     name: "UPS average Battery power"
     device_class: power
     state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["BatteryPower_avg_mW"] | multiply(0.001) }}'
+    value_template: '{{ value_json["BatteryPower_avg_mW"] | multiply(0.001) | round(3) }}'
     unit_of_measurement: "W"
     availability:
       - topic:  "home/rpi/LWT"
@@ -141,7 +141,7 @@ sensor:
     name: "UPS Output current"
     device_class: current
     state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["OutputCurrent_mA"] | multiply(0.001) }}'
+    value_template: '{{ value_json["OutputCurrent_mA"] | multiply(0.001) | round(3)  }}'
     unit_of_measurement: "A"
     availability:
       - topic:  "home/rpi/LWT"
@@ -163,7 +163,7 @@ sensor:
     name: "UPS average output current"
     device_class: current
     state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["OutputCurrent_avg_mA"] | multiply(0.001) }}'
+    value_template: '{{ value_json["OutputCurrent_avg_mA"] | multiply(0.001) | round(3) }}'
     unit_of_measurement: "A"
     availability:
       - topic:  "home/rpi/LWT"
@@ -185,7 +185,7 @@ sensor:
     name: "UPS peak output current"
     device_class: current
     state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["OutputCurrent_peak_mA"] | multiply(0.001) }}'
+    value_template: '{{ value_json["OutputCurrent_peak_mA"] | multiply(0.001) | round(3) }}'
     unit_of_measurement: "A"
     availability:
       - topic:  "home/rpi/LWT"
@@ -207,7 +207,7 @@ sensor:
     name: "UPS average output power"
     device_class: power
     state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["OutputPower_avg_mW"] | multiply(0.001) }}'
+    value_template: '{{ value_json["OutputPower_avg_mW"] | multiply(0.001) | round(3) }}'
     unit_of_measurement: "W"
     availability:
       - topic:  "home/rpi/LWT"
