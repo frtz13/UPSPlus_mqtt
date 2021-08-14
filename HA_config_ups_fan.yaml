@@ -225,6 +225,15 @@ sensor:
         payload_available: "online"
         payload_not_available: "offline"
 
+  - platform: mqtt
+    name: "UPS IOT Platform reply"
+    state_topic: "home/rpi/ups"
+    value_template: '{{ value_json["UPSPlus_IOT_Platform_Reply"] }}'
+    availability:
+      - topic:  "home/rpi/LWT"
+        payload_available: "online"
+        payload_not_available: "offline"
+
 binary_sensor:
 # please note that this sensor gets the whole set of values as attributes
 # you can move the json_attributes_topic line to any other sensor definition
@@ -246,15 +255,6 @@ binary_sensor:
     value_template: '{{ value_json["BatteryCharging"] }}'
     payload_on: "True"
     payload_off: "False"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
-
-  - platform: mqtt
-    name: "UPS IOT Platform reply"
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["UPSPlus_IOT_Platform_Reply"] }}'
     availability:
       - topic:  "home/rpi/LWT"
         payload_available: "online"
