@@ -38,3 +38,6 @@ v20210813 - frtz13
 	- added busnum parameter to INA219 sensor initializations
 	- HA_config_ups_fan.yaml: added current and power sensor definitions with A and W units, added attributes to UPS_on_battery binary sensor 
 	- more renaming in code to get closer to Python naming conventions
+
+v20210905 - frtz13
+	- reduce i2c register readings at address 0x17 to minimum

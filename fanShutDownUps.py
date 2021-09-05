@@ -32,13 +32,14 @@ import configparser
 from collections import deque
 import syslog
 import requests
+import itertools as it
 
 import RPi.GPIO as GPIO
 import smbus2
 from ina219 import INA219,DeviceRangeError
 import paho.mqtt.client as mqtt
 
-SCRIPT_VERSION = "20210813"
+SCRIPT_VERSION = "20210905"
 
 CONFIG_FILE = "fanShutDownUps.ini"
 CONFIGSECTION_FAN = "fan"
@@ -229,16 +230,16 @@ class UPSPlus:
         self._RPi_current_avg_mA = upsCurrent.out_current_avg_mA
         self._RPi_power_avg_mW = upsCurrent.out_power_avg_mW
         self._RPi_current_peak_mA = upsCurrent.out_current_peak_mA
-        # print("avg battery current: {:.0f} mA, avg output current: {:.0f} mA".format(self.BatteryCurent_avg_mA, self.RPiCurrent_avg_mA))
-        # print("avg battery power: {:.0f} mW, avg output power {:.0f} mW".format(self.BatteryPower_avg_mW, self.RPiPower_avg_mW))
         self._RPi_voltage_mini_V = upsCurrent.out_voltage_mini_V
 
-        # get UPS register contents
-        self._reg_buff = []
-        self._reg_buff.append(0x00)
+        # we only get the full set of registers if we report back to the IOT Platform
+        # otherwise just get the register values we actually use
+        if SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM:
+            it_registers = it.chain(range(1,42), range(240,252))
+        else:
+            it_registers = it.chain(range(7,12), range(0x11, 0x13), range(19,21))
         try:
-            for i in range(1,255):
-                self._reg_buff.append(i2c_bus.read_byte_data(DEVICE_ADDR, i))
+            self._reg_buff = {i:i2c_bus.read_byte_data(DEVICE_ADDR, i) for i in it_registers}
         except Exception as exc:
             raise Exception("[UPSPLus.init] Error reading UPS registers: " + str(exc))
 
@@ -247,14 +248,7 @@ class UPSPlus:
 #        self.battery_temperature_degC = self.reg_buff[12] << 8 | self.reg_buff[11]
 #       we very rarely get 0xFF at reg_buff[12]. this value should be 0 anyway for realistic temperatures
         self._battery_temperature_degC = self._reg_buff[11]
-#        self.BatteryFullVoltage_mV = self.aReceiveBuf[14] << 8 | self.aReceiveBuf[13]
-#        self.BatteryEmptyVoltage_mV = self.aReceiveBuf[16] << 8 | self.aReceiveBuf[15]
-#        self.BatteryProtectionVoltage_mV = self.aReceiveBuf[18] << 8 | self.aReceiveBuf[17] # not used here
         self._battery_remaining_capacity_percent = self._reg_buff[20] << 8 | self._reg_buff[19]
-#        self.AccumulatedRunTime_s = self.aReceiveBuf[31] << 24 | self.aReceiveBuf[30] << 16 | self.aReceiveBuf[29] << 8 | self.aReceiveBuf[28]
-#        self.AccumulatedChargingTime_s = self.aReceiveBuf[35] << 24 | self.aReceiveBuf[34] << 16 | self.aReceiveBuf[33] << 8 | self.aReceiveBuf[32]
-#        self.CurrentRunTime_s = self.aReceiveBuf[39] << 24 | self.aReceiveBuf[38] << 16 | self.aReceiveBuf[37] << 8 | self.aReceiveBuf[36]
-#        self.FirmwareVersion = self.aReceiveBuf[41] << 8 | self.aReceiveBuf[40]
 
     @property
     def protection_voltage_mV(self):
@@ -377,18 +371,16 @@ class UPSPlus:
 
 
 class UPSVoltageCurrent:
+
     def __init__(self):
-        #self.battCurrent = deque([0 for i in range(2 * BATT_LOOP_TIME)])
-        # we will fill up the lists progressively,
-        # to avoid "strange" averaged values after rebooting the RPi
         self._batt_current = deque([])
         self._batt_power = deque([])
         self._out_current = deque([])
         self._out_power = deque([])
-        self._arrLength = 2 * BATT_LOOP_TIME
         self._min_RPi_voltage = 6
         self._max_out_current = 0
         self._can_warn = 0
+        self._arrLength = 2 * BATT_LOOP_TIME
 
     def add_value(self):
         had_warning = False
@@ -518,7 +510,6 @@ class Fan:
             self._fansum = 100
         if self._fansum < -100:
             self._fansum = -100
-    #    print("actualTemp %4.2f TempDiff %4.2f pDiff %4.2f iDiff %4.2f fanSpeed %5d" % (actualTemp,diff,pDiff,iDiff,self.fanSpeed))
         self._myPWM.ChangeDutyCycle(self._speed)
         self._publish_speed()
 
@@ -676,7 +667,13 @@ try:
 
     control_fan = (GPIO_FAN >= 0)
     if control_fan:
-        fan = Fan(MQTT_client)
+        try:
+            fan = Fan(MQTT_client)
+        except Exception as exc:
+            errMsg = 'Fan class initialization failed. Error message: ' + str(exc)
+            syslog.syslog(syslog.LOG_ERR, errMsg)
+            print(errMsg)
+            control_fan = False
     
     UPS_present = UPS_is_present()
     if UPS_present:
