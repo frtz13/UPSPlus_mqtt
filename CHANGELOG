@@ -40,4 +40,7 @@ v20210813 - frtz13
 	- more renaming in code to get closer to Python naming conventions
 
 v20210905 - frtz13
-	- reduce i2c register readings at address 0x17 to minimum
+	- reduce i2c register readings at i2c bus address 0x17 to minimum
+
+v20210906 - frtz13
+	- write register addresses in hexadecimal

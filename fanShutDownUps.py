@@ -39,7 +39,7 @@ import smbus2
 from ina219 import INA219,DeviceRangeError
 import paho.mqtt.client as mqtt
 
-SCRIPT_VERSION = "20210905"
+SCRIPT_VERSION = "20210906"
 
 CONFIG_FILE = "fanShutDownUps.ini"
 CONFIGSECTION_FAN = "fan"
@@ -235,20 +235,20 @@ class UPSPlus:
         # we only get the full set of registers if we report back to the IOT Platform
         # otherwise just get the register values we actually use
         if SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM:
-            it_registers = it.chain(range(1,42), range(240,252))
+            it_registers = it.chain(range(0x01,0x2A), range(0xF0,0xFC))
         else:
-            it_registers = it.chain(range(7,12), range(0x11, 0x13), range(19,21))
+            it_registers = it.chain(range(0x07,0x0C), range(0x11, 0x15))
         try:
             self._reg_buff = {i:i2c_bus.read_byte_data(DEVICE_ADDR, i) for i in it_registers}
         except Exception as exc:
             raise Exception("[UPSPLus.init] Error reading UPS registers: " + str(exc))
 
-        self._USB_C_mV = self._reg_buff[8] << 8 | self._reg_buff[7]
-        self._USB_micro_mV = self._reg_buff[10] << 8 | self._reg_buff[9]
+        self._USB_C_mV = self._reg_buff[0x08] << 8 | self._reg_buff[0x07]
+        self._USB_micro_mV = self._reg_buff[0x0A] << 8 | self._reg_buff[0x09]
 #        self.battery_temperature_degC = self.reg_buff[12] << 8 | self.reg_buff[11]
-#       we very rarely get 0xFF at reg_buff[12]. this value should be 0 anyway for realistic temperatures
-        self._battery_temperature_degC = self._reg_buff[11]
-        self._battery_remaining_capacity_percent = self._reg_buff[20] << 8 | self._reg_buff[19]
+#       we very rarely get 0xFF at reg_buff[0x0C]. this value should be 0 anyway for realistic temperatures
+        self._battery_temperature_degC = self._reg_buff[0x0B]
+        self._battery_remaining_capacity_percent = self._reg_buff[0x14] << 8 | self._reg_buff[0x13]
 
     @property
     def protection_voltage_mV(self):
