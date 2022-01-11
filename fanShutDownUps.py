@@ -39,7 +39,7 @@ import smbus2
 from ina219 import INA219,DeviceRangeError
 import paho.mqtt.client as mqtt
 
-SCRIPT_VERSION = "20210906"
+SCRIPT_VERSION = "20220110"
 
 CONFIG_FILE = "fanShutDownUps.ini"
 CONFIGSECTION_FAN = "fan"
@@ -203,6 +203,9 @@ def MQTT_terminate(client):
         print("MQTT client terminated with exception: " + str(e))
         pass
 
+def i2c_bus_read_byte_wait(devaddr, reg, delay_s):
+    sleep(delay_s)
+    return i2c_bus.read_byte_data(devaddr, reg)
 
 class UPSPlus:
     def __init__(self, upsCurrent):
@@ -232,14 +235,16 @@ class UPSPlus:
         self._RPi_current_peak_mA = upsCurrent.out_current_peak_mA
         self._RPi_voltage_mini_V = upsCurrent.out_voltage_mini_V
 
-        # we only get the full set of registers if we report back to the IOT Platform
-        # otherwise just get the register values we actually use
+        # we only read the full set of registers if we report back to the IOT Platform
+        # otherwise just read the register values we actually use
         if SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM:
             it_registers = it.chain(range(0x01,0x2A), range(0xF0,0xFC))
         else:
             it_registers = it.chain(range(0x07,0x0C), range(0x11, 0x15))
         try:
-            self._reg_buff = {i:i2c_bus.read_byte_data(DEVICE_ADDR, i) for i in it_registers}
+            # pick one of the following lines (with or without delay)
+            # self._reg_buff = {i:i2c_bus.read_byte_data(DEVICE_ADDR, i) for i in it_registers}
+            self._reg_buff = {i:i2c_bus_read_byte_wait(DEVICE_ADDR, i, 0.02) for i in it_registers}
         except Exception as exc:
             raise Exception("[UPSPLus.init] Error reading UPS registers: " + str(exc))
 
@@ -247,8 +252,12 @@ class UPSPlus:
         self._USB_micro_mV = self._reg_buff[0x0A] << 8 | self._reg_buff[0x09]
 #        self.battery_temperature_degC = self.reg_buff[12] << 8 | self.reg_buff[11]
 #       we very rarely get 0xFF at reg_buff[0x0C]. this value should be 0 anyway for realistic temperatures
-        self._battery_temperature_degC = self._reg_buff[0x0B]
-        self._battery_remaining_capacity_percent = self._reg_buff[0x14] << 8 | self._reg_buff[0x13]
+        BATT_TEMP_CEILING = 70 # sometimes unrealistic values spoil my graphs
+        self._battery_temperature_degC = min(self._reg_buff[0x0B], BATT_TEMP_CEILING)
+#        self._battery_remaining_capacity_percent = self._reg_buff[0x14] << 8 | self._reg_buff[0x13]
+#       remaining capacity always <= 100%
+        BATT_CAPACITY_CEILING = 101
+        self._battery_remaining_capacity_percent = min(self._reg_buff[0x13], BATT_CAPACITY_CEILING)
 
     @property
     def protection_voltage_mV(self):
@@ -275,7 +284,7 @@ class UPSPlus:
 
     @property
     def on_battery(self):
-        # with the current firmware (v. 9) it seems more reliable to check discharging current.
+        # with previous firmwares (earlier than v. 10) it seemed more reliable to check discharging current.
         # USB-C and micro-USB voltages are sometimes not reported properly
         return self._battery_current_avg_mA > 500 # positive current means battery is discharging
         # return (self.UsbC_mV < 4000) and (self.UsbMicro_mV < 4000)

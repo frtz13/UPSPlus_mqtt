@@ -14,7 +14,7 @@
 
 ## Requirements
 
-- a Geekpi UPSPlus (52pi)
+- a Geekpi UPSPlus EP-0136 (52pi)
 
 - python3
 
@@ -58,7 +58,7 @@ Configuration parameters:
 
 **FAN_LOOP_TIME_s**: recommended value: 5. Interval for fan speed calculation.
 
-**DESIRED_CPU_TEMP_degC**: the fan control will start to work at this temperature and try to maintain this CPU temperature. This parameter is re-read at runtime with the `BATTERY_CHECK_LOOP_TIME_s` interval.
+**DESIRED_CPU_TEMP_degC**: the fan control will start to work at this temperature and try to maintain this CPU temperature. This parameter is re-read at runtime with the `BATTERY_CHECK_LOOP_TIME_s` interval, so you can change this value on the fly, to check if fan control is working properly.
 
 #### UPS
 
@@ -86,7 +86,7 @@ I decided to write a script running continuously in the background to avoid havi
 
 When the UPS Plus is on battery, a message is written every minute to the syslog, containing the current battery voltage and the critical limit. "On battery" status is assumed when the average battery discharge current is greater than 500mA. Because of the use of the average current, status changes will be recognized with some delay.
 
-When the measured battery voltage goes under the critical value while the UPS is on battery, the shutdown is triggered: the UPS Plus Back-To-AC-auto-power-up parameter is set, the UPS Plus shutdown countdown is started, and the Raspberry Pi is told to shut down. Thus, the Raspberry Pi should restart once AC power is back and the batteries charge again.
+When the measured battery voltage goes under the critical value while the UPS is on battery, the shutdown is triggered: the UPSPlus Back-To-AC-auto-power-up parameter is set, the UPSPlus shutdown countdown is started, and the Raspberry Pi is told to shut down. Thus, the Raspberry Pi should restart once AC power is back and the batteries charge again.
 
 At startup, the script will not check the battery voltage during the first five minutes, to avoid another immediate shutdown if AC power comes back with some instability.
 
@@ -182,15 +182,17 @@ If any dependencies are missing, you will get corresponding error messages.
 
 You can stop the script with ctrl-C.
 
-If you do not get any error messages, switch off AC power for the UPS and have a look at the syslog (`journalctl -f`). In less than a minute, you should get a message that the UPS is on battery.
+If you do not get any error messages, switch off AC power for the UPS and have a look at the syslog (`journalctl -f`). After a minute or two, you should get a message that the UPS is on battery.
 
 If you configured a connection to an MQTT broker, start up an MQTT client and have it listen to the `home/rpi/#` topic.
 
 If you want to simulate a shutdown at low battery voltage, do the following in order to avoid to have to wait for a low battery situation:
 
-Be sure to have AC power for the UPS switched on. Start the script with the `--shutdowntest` argument (or set the following parameter in your configuration file, [ups] section: `SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY = 1`), and restart the script. This will instruct the script to start a shutdown sequence immediately when the UPS is on battery. Once the shutdown sequence completed and the UPS shut down power for the Raspberry Pi, you can restore AC power. The UPS should switch on, and the Raspberry Pi should start.
+Be sure to have AC power for the UPS switched on. Start the script with the `--shutdowntest` argument (or set the following parameter in your configuration file, [ups] section: `SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY = 1`), and restart the script. This will instruct the script to start a shutdown sequence immediately, as soon as the UPS is on battery. Once the shutdown sequence completed and the UPS shut down power for the Raspberry Pi, you can restore AC power. The UPS should switch on, and the Raspberry Pi should start.
 
-Once you are done with testing, comment out the `TIMER_BIAS_AT_STARTUP` and `SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY` parameters in the configuration file, configure crontab to start the script at boot time and restart your Raspberry Pi.
+Once you are done with testing, comment out the `TIMER_BIAS_AT_STARTUP` and `SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY` parameters in the configuration file if you used them for testing, configure crontab to start the script at boot time and restart your Raspberry Pi.
+
+With the v10 firmware of the UPS, you will get syslog messages such as "Error getting data from UPS...Remote I/O error" from time to time. Don't worry about these, as long you do not get more than a couple of them per hour.
 
 ## References
 

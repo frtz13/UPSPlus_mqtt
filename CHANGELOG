@@ -1,29 +1,20 @@
-v20210518 - frtz13
-	initial version
+v20220110 - frtz13
+	- add setSampleInterval.py
+	- add optional code to add delay between i2c readings at address 0x17
+	- set ceiling value for battery temperature readings (70°C)
+	- set ceiling value for battery capacity readings (101%)
 
-v20210521 - frtz13
-	- added averaged BatteryPower and OutputPower
-	- added exception handling when reading i2c bus
-	- lower bound for checking Battery Protection Voltage set to 2500 mV
-	- fixed some typos
+v20210906 - frtz13
+	- write register addresses in hexadecimal
 
-v20210526 - frtz13
-	- battery power with polarity
-	- new command line parameter: --notimerbias
-	- uniform averaging period set to twice the battery check loop time
-	- battery protection voltage now read every minute.
-	- new script: setProtectionVoltage.py
-	- new sensors definition file for Home Assistant
+v20210905 - frtz13
+	- reduce i2c register readings at i2c bus address 0x17 to minimum
 
-v20210601 - frtz13
-	- exception handling in shutdown sequence
-
-v20210622 - frtz13
-	- some refactoring in code
-	- re-read DESIRED_CPU_TEMP_degC every minute
-
-v20210622a - frtz13
-	- update feed url in sendUpsStatusData
+v20210813 - frtz13
+	- fix: now sends fanspeed MQTT message at program startup, even if it is zero
+	- added busnum parameter to INA219 sensor initializations
+	- HA_config_ups_fan.yaml: added current and power sensor definitions with A and W units, added attributes to UPS_on_battery binary sensor 
+	- more renaming in code to get closer to Python naming conventions
 
 v20210624 - frtz13
 	- bugfix: shutdown was broken in previous release
@@ -33,14 +24,29 @@ v20210624 - frtz13
 	- report repeated failures of sendUpsStatusData to console and syslog
 	- if enabled, include response from sendUpsStatusData server in MQTT data
 
-v20210813 - frtz13
-	- fix: now sends fanspeed MQTT message at program startup, even if it is zero
-	- added busnum parameter to INA219 sensor initializations
-	- HA_config_ups_fan.yaml: added current and power sensor definitions with A and W units, added attributes to UPS_on_battery binary sensor 
-	- more renaming in code to get closer to Python naming conventions
+v20210622a - frtz13
+	- update feed url in sendUpsStatusData
 
-v20210905 - frtz13
-	- reduce i2c register readings at i2c bus address 0x17 to minimum
+v20210622 - frtz13
+	- some refactoring in code
+	- re-read DESIRED_CPU_TEMP_degC every minute
 
-v20210906 - frtz13
-	- write register addresses in hexadecimal
+v20210601 - frtz13
+	- exception handling in shutdown sequence
+
+v20210526 - frtz13
+	- battery power with polarity
+	- new command line parameter: --notimerbias
+	- uniform averaging period set to twice the battery check loop time
+	- battery protection voltage now read every minute.
+	- new script: setProtectionVoltage.py
+	- new sensors definition file for Home Assistant
+
+v20210521 - frtz13
+	- added averaged BatteryPower and OutputPower
+	- added exception handling when reading i2c bus
+	- lower bound for checking Battery Protection Voltage set to 2500 mV
+	- fixed some typos
+
+v20210518 - frtz13
+	initial version
