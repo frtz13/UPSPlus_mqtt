@@ -39,7 +39,7 @@ import smbus2
 from ina219 import INA219,DeviceRangeError
 import paho.mqtt.client as mqtt
 
-SCRIPT_VERSION = "20220110"
+SCRIPT_VERSION = "2023.02.10"
 
 CONFIG_FILE = "fanShutDownUps.ini"
 CONFIGSECTION_FAN = "fan"
@@ -72,11 +72,14 @@ def read_config():
     global FANSPEED_FILENAME
     global SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM
     global UPSPLUS_IOT_PLATFORM_URL
+    global INA219SHUNT_OUT
+    global INA219SHUNT_BATT
     global BATT_LOOP_TIME
     global TIMER_BIAS_AT_STARTUP
     global SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY # for testing shutdown only
     global SHUTDOWN_TIMEOUT
     global PROTECTION_VOLTAGE_MARGIN_mV
+    global HIGH_BATT_TEMP
     global MQTT_BROKER
     global MQTT_PORT
     global MQTT_USERNAME
@@ -90,6 +93,17 @@ def read_config():
         GPIO_FAN = int(confparser.get(CONFIGSECTION_FAN, "GPIO_FAN"))
         FAN_LOOP_TIME = int(confparser.get(CONFIGSECTION_FAN, "FAN_LOOP_TIME_s"))
         read_config_desired_cpu_temp()
+
+        try:
+            INA219SHUNT_OUT = float(confparser.get(CONFIGSECTION_UPS, "INA219_SHUNT_OUT_Ohm"))
+            print(f"INA219 shunt for output current: {INA219SHUNT_OUT}")
+        except Exception as exc:
+            INA219SHUNT_OUT = 0.00725 # value provided by Geekpi
+        try:
+            INA219SHUNT_BATT = float(confparser.get(CONFIGSECTION_UPS, "INA219_SHUNT_BATT_Ohm"))
+            print(f"INA219 shunt for battery current: {INA219SHUNT_BATT}")
+        except Exception as exc:
+            INA219SHUNT_BATT = 0.005 # value provided by Geekpi
 
         SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM = 1 == int(confparser.get(CONFIGSECTION_UPS, "SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM"))
         try:
@@ -128,6 +142,11 @@ def read_config():
         if PROTECTION_VOLTAGE_MARGIN_mV > protVmargin_maxi_mV:
             print("{} set to {:.0f} mV".format(parm, protVmargin_maxi_mV))
             PROTECTION_VOLTAGE_MARGIN_mV = protVmargin_maxi_mV
+
+        try:
+            HIGH_BATT_TEMP = int(confparser.get(CONFIGSECTION_UPS, "HIGH_BATT_TEMP"))
+        except:
+            HIGH_BATT_TEMP = 99 #disables warning about high battery temperature
 
         MQTT_BROKER = confparser.get(CONFIGSECTION_MQTT, "BROKER")
         MQTT_PORT = int(confparser.get(CONFIGSECTION_MQTT, "TCP_PORT"))
@@ -178,17 +197,14 @@ def MQTT_connect(client):
         client.connect(MQTT_BROKER, MQTT_PORT) #connect to broker
         client.loop_start()
     except Exception as e:
-#        print("connection failed: " + str(e))
+        print(f"MQTT connection failed: {e}")
         return False
     timeout = time.time() + 5
     while client.connection_rc == -1: #wait in loop
         if time.time() > timeout:
             break
         time.sleep(1)
-    if client.connected_flag:
-        return True
-    else:
-        return False
+    return client.connected_flag
 
 def MQTT_terminate(client):
     try:
@@ -208,7 +224,7 @@ def i2c_bus_read_byte_wait(devaddr, reg, delay_s):
     return i2c_bus.read_byte_data(devaddr, reg)
 
 class UPSPlus:
-    def __init__(self, upsCurrent):
+    def __init__(self, upsCurrent, upsHealthCheck):
         self._send_status_data_reply = ""
         # get battery status
         try:
@@ -254,10 +270,12 @@ class UPSPlus:
 #       we very rarely get 0xFF at reg_buff[0x0C]. this value should be 0 anyway for realistic temperatures
         BATT_TEMP_CEILING = 70 # sometimes unrealistic values spoil my graphs
         self._battery_temperature_degC = min(self._reg_buff[0x0B], BATT_TEMP_CEILING)
+        upsHealthCheck.check_batt_temperature(self._battery_temperature_degC)
 #        self._battery_remaining_capacity_percent = self._reg_buff[0x14] << 8 | self._reg_buff[0x13]
 #       remaining capacity always <= 100%
         BATT_CAPACITY_CEILING = 101
         self._battery_remaining_capacity_percent = min(self._reg_buff[0x13], BATT_CAPACITY_CEILING)
+        self._healthy = upsHealthCheck.is_healthy
 
     @property
     def protection_voltage_mV(self):
@@ -303,18 +321,19 @@ class UPSPlus:
                 'UsbMicro_V': self._USB_micro_mV / 1000,
                 'OnBattery': self.on_battery,
                 'BatteryVoltage_V': self._battery_voltage_V,
-                'BatteryCurrent_mA': int(self._battery_current_mA),
-                'BatteryCurrent_avg_mA': int(self._battery_current_avg_mA),
-                'BatteryPower_avg_mW': int(self._battery_power_avg_mW),
+                'BatteryCurrent_A': int(self._battery_current_mA) / 1000.,
+                'BatteryCurrent_avg_A': int(self._battery_current_avg_mA) / 1000.,
+                'BatteryPower_avg_W': int(self._battery_power_avg_mW)/1000.,
                 'BatteryCharging': self.battery_is_charging,
                 'BatteryRemainingCapacity_percent': self._battery_remaining_capacity_percent,
                 'BatteryTemperature_degC': self._battery_temperature_degC,
                 'OutputVoltage_V': self._RPi_voltage_V,
                 'OutputVoltage_mini_V': self._RPi_voltage_mini_V,
-                'OutputCurrent_mA': int(self._RPi_current_mA),
-                'OutputCurrent_avg_mA': int(self._RPi_current_avg_mA),
-                'OutputPower_avg_mW': int(self._RPi_power_avg_mW),
-                'OutputCurrent_peak_mA': int(self._RPi_current_peak_mA),
+                'OutputCurrent_A': int(self._RPi_current_mA) / 1000.,
+                'OutputCurrent_avg_A': int(self._RPi_current_avg_mA) / 1000.,
+                'OutputPower_avg_W': int(self._RPi_power_avg_mW) / 1000.,
+                'OutputCurrent_peak_A': int(self._RPi_current_peak_mA) / 1000.,
+                'IsHealthy': self._healthy,
             }
             if SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM:
                 dictPayload['UPSPlus_IOT_Platform_Reply'] = self._send_status_data_reply
@@ -360,7 +379,7 @@ class UPSPlus:
             'UID2': "%08X" % (self._reg_buff[251] << 24 | self._reg_buff[250] << 16
                                         | self._reg_buff[249] << 8 | self._reg_buff[248]),
         }
-#        print(DATA)
+#        print(tel_data)
         try:
             r = requests.post(UPSPLUS_IOT_PLATFORM_URL, data=tel_data)
             # print(r.text)
@@ -480,6 +499,39 @@ class UPSVoltageCurrent:
         return tmpMin
 
 
+class UPSHealth:
+# the UPS is considered unhealthy if...
+# - at least 10 consecutive battery temperature readings are equal.
+#   this occurred frequently with firmware versions <= 9) but has not been observed so far for v.10.
+#   when this occurred, the UPS would not perform the shutdown procedure at the end of battery life, and would not switch off power to the RPi.
+# - at least 3 consecutive battery temperature readings are over threshold
+    def __init__(self, high_batt_temp):
+        self._lastTemp = -1
+        self._UNHEALTHY_EQUAL_BATT_TEMP_VALUES_COUNT = 10
+        self._equalValuesFound = 0
+        self._HIGH_BATT_TEMP = high_batt_temp
+        self._highBattTempValuesFound = 0
+        self._HIGH_BATT_TEMP_MAXCOUNT = 3
+
+    def check_batt_temperature(self, batt_temp):
+        if batt_temp == self._lastTemp:
+            if self._equalValuesFound <= self._UNHEALTHY_EQUAL_BATT_TEMP_VALUES_COUNT:
+                self._equalValuesFound += 1
+        else:
+            self._lastTemp = batt_temp
+            self._equalValuesFound = 0
+        if batt_temp > self._HIGH_BATT_TEMP:
+            if self._highBattTempValuesFound <= self._HIGH_BATT_TEMP_MAXCOUNT:
+                self._highBattTempValuesFound += 1
+        else:
+            self._highBattTempValuesFound = 0
+
+    @property
+    def is_healthy(self):
+        return (self._equalValuesFound < self._UNHEALTHY_EQUAL_BATT_TEMP_VALUES_COUNT) \
+            and (self._highBattTempValuesFound < self._HIGH_BATT_TEMP_MAXCOUNT)
+
+
 class Fan:
     def __init__(self, mqttclient):
         self._currentfanspeed = 999
@@ -546,7 +598,7 @@ class Fan:
 def get_UPS_status_and_check_battery_voltage(mqttclient):
     global UPS_was_on_battery
     try:
-        upsplus = UPSPlus(UPS_voltage_current)
+        upsplus = UPSPlus(UPS_voltage_current, UPS_health_check)
     except Exception as exc:
         errMsg = "[get_UPS_status_and_check_battery_voltage] Error getting data from UPS: " + str(exc)
         print(errMsg)
@@ -631,8 +683,8 @@ def UPS_is_present():
         return False
     # Raspberry Pi output current and voltage
     try:
-        inaRPi = INA219(0.00725, busnum=DEVICE_BUS, address=0x40)
-        inaRPi.configure()
+        inaRPi = INA219(INA219SHUNT_OUT, busnum=DEVICE_BUS, address=0x40)
+        inaRPi.configure(inaRPi.RANGE_32V, inaRPi.GAIN_AUTO, inaRPi.ADC_12BIT, inaRPi.ADC_12BIT)
     except Exception as exc:
         errMsg = 'Cannot initialize communication with INA219 (output). Error message: ' + str(exc)
         syslog.syslog(syslog.LOG_WARNING, errMsg)
@@ -640,8 +692,8 @@ def UPS_is_present():
         return False
     # Battery current and voltage
     try:
-        inaBattery = INA219(0.005, busnum=DEVICE_BUS, address=0x45)
-        inaBattery.configure()
+        inaBattery = INA219(INA219SHUNT_BATT, busnum=DEVICE_BUS, address=0x45)
+        inaBattery.configure(inaBattery.RANGE_32V, inaBattery.GAIN_AUTO, inaBattery.ADC_12BIT, inaBattery.ADC_12BIT)
     except Exception as exc:
         errMsg = 'Cannot initialize communication with INA219 (battery). Error message: ' + str(exc)
         syslog.syslog(syslog.LOG_WARNING, errMsg)
@@ -672,7 +724,6 @@ try:
     mqtt.Client.connected_flag = False # create flags in class
     mqtt.Client.connection_rc = -1
     MQTT_client = mqtt.Client("fanShutDownUps")
-    MQTT_connected = False
 
     control_fan = (GPIO_FAN >= 0)
     if control_fan:
@@ -687,6 +738,7 @@ try:
     UPS_present = UPS_is_present()
     if UPS_present:
         UPS_voltage_current = UPSVoltageCurrent()
+        UPS_health_check = UPSHealth(HIGH_BATT_TEMP)
 
     UPS_was_on_battery = False
 
@@ -697,6 +749,8 @@ try:
     batterycheck_timer = TIMER_BIAS_AT_STARTUP
     
     fan_timer = 0
+    if connect_to_MQTT:
+      MQTT_connect(MQTT_client)
     while True:
         if UPS_present:
             UPS_voltage_current.add_value()
@@ -710,8 +764,6 @@ try:
             batterycheck_timer = 0
             if control_fan:
                 read_config_desired_cpu_temp()
-            if not MQTT_connected and connect_to_MQTT:
-                MQTT_connected = MQTT_connect(MQTT_client)
             if UPS_present:
                 get_UPS_status_and_check_battery_voltage(MQTT_client)
         else:

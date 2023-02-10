@@ -1,3 +1,7 @@
+v2023.02.10 - frtz13
+	- can configure custom ina219 shunt values to calibrate readings
+	- current values now in A, power values in W
+
 v20220110 - frtz13
 	- add setSampleInterval.py
 	- add optional code to add delay between i2c readings at address 0x17

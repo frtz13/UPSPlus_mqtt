@@ -74,6 +74,8 @@ At startup, the script will check if it can detect the UPS at the expected addre
 
 **PROTECTION_VOLTAGE_MARGIN_mV**: recommended value: 200. Shutdown will be triggered when the battery voltage is lower than the sum of the UPS-Plus protection voltage and this value.
 
+Later you may want to adjust the INA_219_SHUNT... parameters to calibrate the current readings. I did this by measuring the USB charger current while the batteries are fully charged, and assuming some reasonable efficiency factor for the UPS circuits.
+
 #### MQTT broker
 
 Configuration parameters for the MQTT broker should be self-explaining. If you do not want to use this feature, set BROKER to an empty value.
@@ -108,13 +110,13 @@ UPS data is published to the broker with the topic `home/rpi/ups`. It is sent as
 
 - BatteryVoltage_V (as measured by the INA219 sensor at i2c address 0x45),
 
-- BatteryCurrent_mA (positive value: discharging, negative value: charging)
+- BatteryCurrent_A (positive value: discharging, negative value: charging)
 
-- BatteryCurrent_avg_mA,
+- BatteryCurrent_avg_A,
 
-- BatteryPower_avg_mW,
+- BatteryPower_avg_W,
 
-- BatteryCharging (boolean, `true` if BatteryCurrent_avg_mA is negative)
+- BatteryCharging (boolean, `true` if BatteryCurrent_avg_A is negative)
 
 - BatteryRemainingCapacity_percent,
 
@@ -124,11 +126,11 @@ UPS data is published to the broker with the topic `home/rpi/ups`. It is sent as
 
 - OutputVoltage_mini_V (minimum value during the preceding time interval of BATTERY_CHECK_LOOP_TIME_s)
 
-- OutputCurrent_mA,
+- OutputCurrent_A,
 
-- OutputCurrent_avg_mA,
+- OutputCurrent_avg_A,
 
-- OutputPower_avg_mW,
+- OutputPower_avg_W,
 
 - OutputCurrent_peak_mA (peak value during the preceding time interval of BATTERY_CHECK_LOOP_TIME_s)
 
@@ -144,8 +146,8 @@ sensor:
     name: "UPS average battery current"
     device_class: current
     state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["BatteryCurrent_avg_mA"] }}'
-    unit_of_measurement: "mA"
+    value_template: '{{ value_json["BatteryCurrent_avg_A"] }}'
+    unit_of_measurement: "A"
     availability:
       - topic:  "home/rpi/LWT"
         payload_available: "online"
