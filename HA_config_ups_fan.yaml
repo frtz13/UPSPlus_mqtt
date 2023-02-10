@@ -1,261 +1,164 @@
 # example file for Home Assistant sensor definitions
 # copy / paste sensor definitions of interest to your own configuration.yaml file
 
-# please note: current and power sensor definitions exist twice:
-# one defintion with mA and mW units
-# another defintion with A and W units
-# pick only one of each
+mqtt:
+    sensor:
+      - name: CPU fan speed
+        unit_of_measurement: "%"
+        state_topic: "home/rpi/fanspeed"
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
 
-sensor:
-  - platform: mqtt
-    name: CPU fan speed
-    unit_of_measurement: "%"
-    state_topic: "home/rpi/fanspeed"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
+      - name: "UPS Battery Voltage"
+        device_class: voltage
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["BatteryVoltage_V"] }}'
+        unit_of_measurement: "V"
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
 
-  - platform: mqtt
-    name: "UPS Battery Voltage"
-    device_class: voltage
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["BatteryVoltage_V"] }}'
-    unit_of_measurement: "V"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
+      - name: "UPS Battery current"
+        device_class: current
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["BatteryCurrent_A"] }}'
+        unit_of_measurement: "A"
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
 
-  - platform: mqtt
-    name: "UPS Battery current"
-    device_class: current
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["BatteryCurrent_mA"] }}'
-    unit_of_measurement: "mA"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
+      - name: "UPS average Battery current"
+        device_class: current
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["BatteryCurrent_avg_A"] }}'
+        unit_of_measurement: "A"
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
 
-  - platform: mqtt
-    name: "UPS Battery current"
-    device_class: current
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["BatteryCurrent_mA"] | multiply(0.001) | round(3) }}'
-    unit_of_measurement: "A"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
+      - name: "UPS average Battery power"
+        device_class: power
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["BatteryPower_avg_W"] }}'
+        unit_of_measurement: "W"
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
 
-  - platform: mqtt
-    name: "UPS average Battery current"
-    device_class: current
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["BatteryCurrent_avg_mA"] }}'
-    unit_of_measurement: "mA"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
+      - name: "UPS Battery temperature"
+        device_class: temperature
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["BatteryTemperature_degC"] }}'
+        unit_of_measurement: "°C"
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
 
-  - platform: mqtt
-    name: "UPS average Battery current"
-    device_class: current
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["BatteryCurrent_avg_mA"] | multiply(0.001) | round(3) }}'
-    unit_of_measurement: "A"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
+      - name: "UPS Output Voltage"
+        device_class: voltage
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["OutputVoltage_V"] }}'
+        unit_of_measurement: "V"
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
 
-  - platform: mqtt
-    name: "UPS average Battery power"
-    device_class: power
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["BatteryPower_avg_mW"] }}'
-    unit_of_measurement: "mW"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
+      - name: "UPS minimum Output Voltage"
+        device_class: voltage
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["OutputVoltage_mini_V"] }}'
+        unit_of_measurement: "V"
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
 
-  - platform: mqtt
-    name: "UPS average Battery power"
-    device_class: power
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["BatteryPower_avg_mW"] | multiply(0.001) | round(3) }}'
-    unit_of_measurement: "W"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
+      - name: "UPS Output current"
+        device_class: current
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["OutputCurrent_A"] }}'
+        unit_of_measurement: "A"
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
 
-  - platform: mqtt
-    name: "UPS Battery temperature"
-    device_class: temperature
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["BatteryTemperature_degC"] }}'
-    unit_of_measurement: "°C"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
+      - name: "UPS average output current"
+        device_class: current
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["OutputCurrent_avg_A"] }}'
+        unit_of_measurement: "A"
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
 
-  - platform: mqtt
-    name: "UPS Output Voltage"
-    device_class: voltage
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["OutputVoltage_V"] }}'
-    unit_of_measurement: "V"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
+      - name: "UPS peak output current"
+        device_class: current
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["OutputCurrent_peak_A"] }}'
+        unit_of_measurement: "A"
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
 
-  - platform: mqtt
-    name: "UPS minimum Output Voltage"
-    device_class: voltage
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["OutputVoltage_mini_V"] }}'
-    unit_of_measurement: "V"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
+      - name: "UPS average output power"
+        device_class: power
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["OutputPower_avg_W"] }}'
+        unit_of_measurement: "W"
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
 
-  - platform: mqtt
-    name: "UPS Output current"
-    device_class: current
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["OutputCurrent_mA"] }}'
-    unit_of_measurement: "mA"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
+      - name: "UPS Battery Remaining Capacity"
+        device_class: energy
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["BatteryRemainingCapacity_percent"] }}'
+        unit_of_measurement: "%"
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
 
-  - platform: mqtt
-    name: "UPS Output current"
-    device_class: current
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["OutputCurrent_mA"] | multiply(0.001) | round(3)  }}'
-    unit_of_measurement: "A"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
+      - name: "UPS IOT Platform reply"
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["UPSPlus_IOT_Platform_Reply"] }}'
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
 
-  - platform: mqtt
-    name: "UPS average output current"
-    device_class: current
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["OutputCurrent_avg_mA"] }}'
-    unit_of_measurement: "mA"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
+    binary_sensor:
+    # please note that this sensor gets the whole set of values as attributes
+    # you can move the json_attributes_topic line to any other sensor definition
+      - name: "UPS on Battery"
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["OnBattery"] }}'
+        payload_on: "True"
+        payload_off: "False"
+        json_attributes_topic: "home/rpi/ups"
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
 
-  - platform: mqtt
-    name: "UPS average output current"
-    device_class: current
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["OutputCurrent_avg_mA"] | multiply(0.001) | round(3) }}'
-    unit_of_measurement: "A"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
-
-  - platform: mqtt
-    name: "UPS peak output current"
-    device_class: current
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["OutputCurrent_peak_mA"] }}'
-    unit_of_measurement: "mA"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
-
-  - platform: mqtt
-    name: "UPS peak output current"
-    device_class: current
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["OutputCurrent_peak_mA"] | multiply(0.001) | round(3) }}'
-    unit_of_measurement: "A"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
-
-  - platform: mqtt
-    name: "UPS average output power"
-    device_class: power
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["OutputPower_avg_mW"] }}'
-    unit_of_measurement: "mW"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
-
-  - platform: mqtt
-    name: "UPS average output power"
-    device_class: power
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["OutputPower_avg_mW"] | multiply(0.001) | round(3) }}'
-    unit_of_measurement: "W"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
-
-  - platform: mqtt
-    name: "UPS Battery Remaining Capacity"
-    device_class: energy
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["BatteryRemainingCapacity_percent"] }}'
-    unit_of_measurement: "%"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
-
-  - platform: mqtt
-    name: "UPS IOT Platform reply"
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["UPSPlus_IOT_Platform_Reply"] }}'
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
-
-binary_sensor:
-# please note that this sensor gets the whole set of values as attributes
-# you can move the json_attributes_topic line to any other sensor definition
-  - platform: mqtt
-    name: "UPS on Battery"
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["OnBattery"] }}'
-    payload_on: "True"
-    payload_off: "False"
-    json_attributes_topic: "home/rpi/ups"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
-
-  - platform: mqtt
-    name: "UPS Battery Charging"
-    state_topic: "home/rpi/ups"
-    value_template: '{{ value_json["BatteryCharging"] }}'
-    payload_on: "True"
-    payload_off: "False"
-    availability:
-      - topic:  "home/rpi/LWT"
-        payload_available: "online"
-        payload_not_available: "offline"
+      - name: "UPS Battery Charging"
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["BatteryCharging"] }}'
+        payload_on: "True"
+        payload_off: "False"
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
