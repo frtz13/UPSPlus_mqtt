@@ -39,7 +39,7 @@ import smbus2
 from ina219 import INA219,DeviceRangeError
 import paho.mqtt.client as mqtt
 
-SCRIPT_VERSION = "2023.02.10"
+SCRIPT_VERSION = "2023.03.24"
 
 CONFIG_FILE = "fanShutDownUps.ini"
 CONFIGSECTION_FAN = "fan"
@@ -165,7 +165,9 @@ def on_MQTTconnect(client, userdata, flags, rc):
     client.connection_rc = rc
     if rc == 0:
         client.connected_flag = True
-#       print("connected OK")
+        msg = "Connected to MQTT broker"
+        print(msg)
+        syslog.syslog(syslog.LOG_INFO, msg)
         try:
             client.publish(MQTT_TOPIC + MQTT_TOPIC_LWT, MQTT_PAYLOAD_ONLINE, 0, retain=True)
         except:
@@ -187,6 +189,8 @@ def on_MQTTdisconnect(client, userdata, rc):
     client.connected_flag = False
 
 def MQTT_connect(client):
+    # returns True if we started the connection loop, False otherwise
+    # the connection loop will take care of reconnections
     client.on_connect = on_MQTTconnect
     client.on_disconnect = on_MQTTdisconnect
     client.will_set(MQTT_TOPIC + MQTT_TOPIC_LWT, MQTT_PAYLOAD_OFFLINE, 0, retain=True)
@@ -197,14 +201,17 @@ def MQTT_connect(client):
         client.connect(MQTT_BROKER, MQTT_PORT) #connect to broker
         client.loop_start()
     except Exception as e:
-        print(f"MQTT connection failed: {e}")
+        errMsg = f"MQTT connection attempt failed: {e}. Will be retried."
+        print(errMsg)
+        syslog.syslog(syslog.LOG_WARNING, errMsg)
         return False
     timeout = time.time() + 5
     while client.connection_rc == -1: #wait in loop
         if time.time() > timeout:
             break
         time.sleep(1)
-    return client.connected_flag
+#        print("MQTT wait...")
+    return True
 
 def MQTT_terminate(client):
     try:
@@ -749,8 +756,9 @@ try:
     batterycheck_timer = TIMER_BIAS_AT_STARTUP
     
     fan_timer = 0
+    MQTT_connection_loop_running = False
     if connect_to_MQTT:
-      MQTT_connect(MQTT_client)
+      MQTT_connection_loop_running = MQTT_connect(MQTT_client)
     while True:
         if UPS_present:
             UPS_voltage_current.add_value()
@@ -762,6 +770,8 @@ try:
                 fan_timer += 1
         if batterycheck_timer >= BATT_LOOP_TIME:
             batterycheck_timer = 0
+            if connect_to_MQTT and not MQTT_connection_loop_running:
+                MQTT_connection_loop_running = MQTT_connect(MQTT_client)
             if control_fan:
                 read_config_desired_cpu_temp()
             if UPS_present:

@@ -1,3 +1,7 @@
+v2023.03.24 - frtz13
+	- establish MQTT connection at startup reliably (was broken in v.2023.02.10)
+	- added HIGH_BATT_TEMP to sample INI file
+
 v2023.02.10 - frtz13
 	- can configure custom ina219 shunt values to calibrate readings
 	- current values now in A, power values in W
