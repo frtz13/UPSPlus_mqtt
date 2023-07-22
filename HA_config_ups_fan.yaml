@@ -142,11 +142,22 @@ mqtt:
     binary_sensor:
     # please note that this sensor gets the whole set of values as attributes
     # you can move the json_attributes_topic line to any other sensor definition
+      - name: "UPS healthy"
+        state_topic: "home/rpi/ups"
+        value_template: '{{ value_json["IsHealthy"] }}'
+        payload_on: true
+        payload_off: false
+        availability:
+          - topic:  "home/rpi/LWT"
+            payload_available: "online"
+            payload_not_available: "offline"
+        json_attributes_topic: "home/rpi/ups"
+
       - name: "UPS on Battery"
         state_topic: "home/rpi/ups"
         value_template: '{{ value_json["OnBattery"] }}'
-        payload_on: "True"
-        payload_off: "False"
+        payload_on: true
+        payload_off: false
         json_attributes_topic: "home/rpi/ups"
         availability:
           - topic:  "home/rpi/LWT"
@@ -156,8 +167,8 @@ mqtt:
       - name: "UPS Battery Charging"
         state_topic: "home/rpi/ups"
         value_template: '{{ value_json["BatteryCharging"] }}'
-        payload_on: "True"
-        payload_off: "False"
+        payload_on: true
+        payload_off: false
         availability:
           - topic:  "home/rpi/LWT"
             payload_available: "online"

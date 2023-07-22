@@ -39,7 +39,7 @@ import smbus2
 from ina219 import INA219,DeviceRangeError
 import paho.mqtt.client as mqtt
 
-SCRIPT_VERSION = "2023.03.24"
+SCRIPT_VERSION = "2023.07.21"
 
 CONFIG_FILE = "fanShutDownUps.ini"
 CONFIGSECTION_FAN = "fan"
@@ -76,6 +76,7 @@ def read_config():
     global INA219SHUNT_BATT
     global BATT_LOOP_TIME
     global TIMER_BIAS_AT_STARTUP
+    global one_hour_delay
     global SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY # for testing shutdown only
     global SHUTDOWN_TIMEOUT
     global PROTECTION_VOLTAGE_MARGIN_mV
@@ -96,12 +97,12 @@ def read_config():
 
         try:
             INA219SHUNT_OUT = float(confparser.get(CONFIGSECTION_UPS, "INA219_SHUNT_OUT_Ohm"))
-            print(f"INA219 shunt for output current: {INA219SHUNT_OUT}")
+            print(f"INA219 shunt for output current: {INA219SHUNT_OUT} Ohm")
         except Exception as exc:
             INA219SHUNT_OUT = 0.00725 # value provided by Geekpi
         try:
             INA219SHUNT_BATT = float(confparser.get(CONFIGSECTION_UPS, "INA219_SHUNT_BATT_Ohm"))
-            print(f"INA219 shunt for battery current: {INA219SHUNT_BATT}")
+            print(f"INA219 shunt for battery current: {INA219SHUNT_BATT} Ohm")
         except Exception as exc:
             INA219SHUNT_BATT = 0.005 # value provided by Geekpi
 
@@ -114,10 +115,13 @@ def read_config():
         BATT_LOOP_TIME = int(confparser.get(CONFIGSECTION_UPS, "BATTERY_CHECK_LOOP_TIME_s"))
         if CMD_NO_TIMER_BIAS in sys.argv:
             TIMER_BIAS_AT_STARTUP = 0
+            one_hour_delay = 0
             print("Timer bias at start-up set to 0")
         else:
             try:
                 TIMER_BIAS_AT_STARTUP = -int(confparser.get(CONFIGSECTION_UPS, "TIMER_BIAS_AT_STARTUP"))
+                if TIMER_BIAS_AT_STARTUP == 0:
+                    one_hour_delay = 0
             except:
                 TIMER_BIAS_AT_STARTUP = -300 + BATT_LOOP_TIME
 
@@ -278,6 +282,7 @@ class UPSPlus:
         BATT_TEMP_CEILING = 70 # sometimes unrealistic values spoil my graphs
         self._battery_temperature_degC = min(self._reg_buff[0x0B], BATT_TEMP_CEILING)
         upsHealthCheck.check_batt_temperature(self._battery_temperature_degC)
+        upsHealthCheck.check_charger(self.on_battery, self._battery_current_avg_mA)
 #        self._battery_remaining_capacity_percent = self._reg_buff[0x14] << 8 | self._reg_buff[0x13]
 #       remaining capacity always <= 100%
         BATT_CAPACITY_CEILING = 101
@@ -310,9 +315,10 @@ class UPSPlus:
     @property
     def on_battery(self):
         # with previous firmwares (earlier than v. 10) it seemed more reliable to check discharging current.
+        # with firmware >= v.10 we go back to checking the USB ports
         # USB-C and micro-USB voltages are sometimes not reported properly
-        return self._battery_current_avg_mA > 500 # positive current means battery is discharging
-        # return (self.UsbC_mV < 4000) and (self.UsbMicro_mV < 4000)
+        # return self._battery_current_avg_mA > 500 # positive current means battery is discharging
+        return (self._USB_C_mV < 4000) and (self._USB_micro_mV < 4000)
 
     @property
     def battery_is_charging(self):
@@ -508,17 +514,22 @@ class UPSVoltageCurrent:
 
 class UPSHealth:
 # the UPS is considered unhealthy if...
-# - at least 10 consecutive battery temperature readings are equal.
+# - more than 9 consecutive battery temperature readings are equal.
 #   this occurred frequently with firmware versions <= 9) but has not been observed so far for v.10.
 #   when this occurred, the UPS would not perform the shutdown procedure at the end of battery life, and would not switch off power to the RPi.
 # - at least 3 consecutive battery temperature readings are over threshold
+# - charging circuit works properly: the battery is not discharging when not on battery
     def __init__(self, high_batt_temp):
         self._lastTemp = -1
-        self._UNHEALTHY_EQUAL_BATT_TEMP_VALUES_COUNT = 10
+        self._UNHEALTHY_EQUAL_BATT_TEMP_VALUES_COUNT = 20
         self._equalValuesFound = 0
         self._HIGH_BATT_TEMP = high_batt_temp
         self._highBattTempValuesFound = 0
         self._HIGH_BATT_TEMP_MAXCOUNT = 3
+        self._charger_works_properly = True
+        self._batt_current = deque([])
+        self._arrLength = 5
+        self._ignore_next_batt_current = False
 
     def check_batt_temperature(self, batt_temp):
         if batt_temp == self._lastTemp:
@@ -532,11 +543,45 @@ class UPSHealth:
                 self._highBattTempValuesFound += 1
         else:
             self._highBattTempValuesFound = 0
+    
+    def check_charger(self, ups_on_battery, avg_batt_current_mA):
+        # do not try to detect charger malfunction when UPS is on battery
+        # do not take first reading after on_battery disappears, because avg current may still be positive at first
+        if ups_on_battery or self._ignore_next_batt_current:
+            if len(self._batt_current) > 0:
+                self._batt_current.clear()
+            self._ignore_next_batt_current = False
+        else:
+            if len(self._batt_current) >= self._arrLength:
+                self._batt_current.popleft()
+            self._batt_current.append(avg_batt_current_mA)
+        if ups_on_battery:
+            self._ignore_next_batt_current = True
+        # we make another average of avg batt current readings to get rid of current spikes
+        # due to battery voltage probings
+        avg_avg_batt_current_mA = 0
+        if len(self._batt_current) == self._arrLength:
+            avg_avg_batt_current_mA = sum(self._batt_current) / len(self._batt_current)
+        self._charger_works_properly = not (not ups_on_battery and (avg_avg_batt_current_mA > 100 ))
+#        print(f"avg batt current: {avg_batt_current_mA}, avg avg batt current: {avg_avg_batt_current_mA}")
+        # we take 0.1A as a limit to stay clear of battery discharge current due to battery voltage probing
 
     @property
     def is_healthy(self):
+        errMsg = ""
+        if not (self._equalValuesFound < self._UNHEALTHY_EQUAL_BATT_TEMP_VALUES_COUNT):
+            errMsg = "[UPS health] Got too many identical battery temperature values"
+        if not (self._highBattTempValuesFound < self._HIGH_BATT_TEMP_MAXCOUNT):
+            errMsg = "[UPS health] Battery temperature seems too high"
+        if not self._charger_works_properly:
+            errMsg = "[UPS health] Charger connected, but battery is discharging"
+        if len(errMsg) > 0:
+            print(errMsg)
+            syslog.syslog(syslog.LOG_ERR, errMsg)
+
         return (self._equalValuesFound < self._UNHEALTHY_EQUAL_BATT_TEMP_VALUES_COUNT) \
-            and (self._highBattTempValuesFound < self._HIGH_BATT_TEMP_MAXCOUNT)
+            and (self._highBattTempValuesFound < self._HIGH_BATT_TEMP_MAXCOUNT) \
+            and self._charger_works_properly
 
 
 class Fan:
@@ -601,15 +646,21 @@ class Fan:
         self.switch_off()
         GPIO.cleanup() # resets all GPIO ports used by this program
 
+had_upsplus_exception = False
 
 def get_UPS_status_and_check_battery_voltage(mqttclient):
-    global UPS_was_on_battery
+    global UPS_was_on_battery, had_upsplus_exception, one_hour_delay
     try:
         upsplus = UPSPlus(UPS_voltage_current, UPS_health_check)
+        had_upsplus_exception = False
     except Exception as exc:
-        errMsg = "[get_UPS_status_and_check_battery_voltage] Error getting data from UPS: " + str(exc)
-        print(errMsg)
-        syslog.syslog(syslog.LOG_ERR, errMsg)
+        # only log error if 2 or more exceptions without interruption
+        if had_upsplus_exception:
+            errMsg = "[get_UPS_status_and_check_battery_voltage] Error getting data from UPS: " + str(exc)
+            print(errMsg)
+            syslog.syslog(syslog.LOG_ERR, errMsg)
+        else:
+            had_upsplus_exception = True
         return
     if SEND_STATUS_TO_UPSPLUS_IOT_PLATFORM:
         upsplus.send_UPS_status_data()
@@ -619,25 +670,32 @@ def get_UPS_status_and_check_battery_voltage(mqttclient):
     except Exception as e:
         print("mqttpublish exception: " + str(e))
         pass
+ 
     if upsplus.on_battery:
         UPS_was_on_battery = True
+    else:
+        if UPS_was_on_battery:
+            syslog.syslog(syslog.LOG_INFO, 'UPS back on AC supply.')
+            UPS_was_on_battery = False
+
+    if upsplus.on_battery or (one_hour_delay == 0):
         shutdown_at_battvoltage_V = (upsplus.protection_voltage_mV + PROTECTION_VOLTAGE_MARGIN_mV) / 1000
-        syslog.syslog(syslog.LOG_WARNING, 
+        if upsplus.on_battery:
+            syslog.syslog(syslog.LOG_WARNING, 
                       f"UPS on battery. Battery voltage: {upsplus.battery_voltage_V:.3f} V. "
                       f"Shutdown at {shutdown_at_battvoltage_V:.3f} V")
         if upsplus._battery_voltage_V > 1: # protect against bad battery voltage reading
             if upsplus._battery_voltage_V < shutdown_at_battvoltage_V :
                 syslog.syslog(syslog.LOG_WARNING,
                               f"UPS battery voltage below threshold of {shutdown_at_battvoltage_V:.3f} V. Shutting down.")
+                if not upsplus.on_battery:
+                    syslog.syslog(syslog.LOG_ERR,
+                              f"Low battery voltage may be caused by faulty charging circuit. Charger voltage present at USB input.")
                 shut_down_RPi(mqttclient)
             else:
                 if SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY :
                     syslog.syslog(syslog.LOG_INFO, 'Immediate shutdown.')
                     shut_down_RPi(mqttclient)
-    else:
-        if UPS_was_on_battery:
-            syslog.syslog(syslog.LOG_INFO, 'UPS back on AC supply.')
-            UPS_was_on_battery = False
     return
 
 
@@ -748,6 +806,7 @@ try:
         UPS_health_check = UPSHealth(HIGH_BATT_TEMP)
 
     UPS_was_on_battery = False
+    one_hour_delay = 3600
 
      # set negative value (-300 + BATT_LOOP_TIME) to force long waiting at startup.
      # so the RPi will be running for some minimum time if power fails again.
@@ -759,6 +818,7 @@ try:
     MQTT_connection_loop_running = False
     if connect_to_MQTT:
       MQTT_connection_loop_running = MQTT_connect(MQTT_client)
+ 
     while True:
         if UPS_present:
             UPS_voltage_current.add_value()
@@ -778,6 +838,8 @@ try:
                 get_UPS_status_and_check_battery_voltage(MQTT_client)
         else:
             batterycheck_timer += 1
+        if one_hour_delay > 0:
+            one_hour_delay -= 1
         sleep(1)
 
 except KeyboardInterrupt: # trap a CTRL+C keyboard interrupt 

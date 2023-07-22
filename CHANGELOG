@@ -1,3 +1,10 @@
+v2023.07.21 - frtz13
+	- use USB charging port voltages to determine if UPS is on battery, or not
+	- battery health now detecs anomaly when charger is connected and batteries are discharging
+	- i2c communication errors are only reported if they happen repeatedly
+	- check low battery voltage even when charger is connected. However, this particular check
+	  only starts one hour after startup, to give battery voltage a chance to increase after a regular shutdown.
+
 v2023.03.24 - frtz13
 	- establish MQTT connection at startup reliably (was broken in v.2023.02.10)
 	- added HIGH_BATT_TEMP to sample INI file
