@@ -1,3 +1,6 @@
+v2025.04.02 - frtz13
+    - bug fix: with SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY parameter activated: do not shut down after 1 hour, if UPS is not on battery
+
 v2023.07.21 - frtz13
 	- use USB charging port voltages to determine if UPS is on battery, or not
 	- battery health now detecs anomaly when charger is connected and batteries are discharging

@@ -39,7 +39,7 @@ import smbus2
 from ina219 import INA219,DeviceRangeError
 import paho.mqtt.client as mqtt
 
-SCRIPT_VERSION = "2023.07.21"
+SCRIPT_VERSION = "2025.04.02"
 
 CONFIG_FILE = "fanShutDownUps.ini"
 CONFIGSECTION_FAN = "fan"
@@ -693,7 +693,7 @@ def get_UPS_status_and_check_battery_voltage(mqttclient):
                               f"Low battery voltage may be caused by faulty charging circuit. Charger voltage present at USB input.")
                 shut_down_RPi(mqttclient)
             else:
-                if SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY :
+                if SHUTDOWN_IMMEDIATELY_WHEN_ON_BATTERY and upsplus.on_battery:
                     syslog.syslog(syslog.LOG_INFO, 'Immediate shutdown.')
                     shut_down_RPi(mqttclient)
     return
